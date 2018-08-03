@@ -1,0 +1,12 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="alInterruptCD.lua"/>	
+	<Script file="alRaidCD.lua"/>	
+	<Script file="CombatAlert.lua"/>	
+	<Script file="EasyLogger.lua"/>
+	<Script file="LynMonk.lua"/>
+	<Script file="HealthWarning.lua"/>
+	<Script file="QuickTalents.lua"/>
+	<Script file="SaySapped.lua"/>
+	<Script file="SpellNotReadyYet.lua"/>
+</Ui>
+

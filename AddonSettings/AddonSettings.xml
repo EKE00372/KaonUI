@@ -1,0 +1,5 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="SetAddons.lua"/>	
+	<Script file="SetBW.lua"/>	
+	<Script file="SetMSBT.lua"/>		
+</Ui>

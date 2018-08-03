@@ -1,0 +1,15 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="BindsWhen.lua"/>
+	<Script file="Blizz_GuildUI_Status.lua"/>
+	<Script file="CharacterStats.lua"/>
+	<Script file="FastError.lua"/>
+	<Script file="FriendColor.lua"/>
+	<Script file="GuildIcons.lua"/>
+	<Script file="ImprovedLootFrame.lua"/>
+	<Script file="ImprovedOptionsFrames.lua"/>
+	<Script file="ImprovedStableFrame.lua"/>
+	<Script file="MailinputboxResizer.lua"/>
+	<Script file="MerchantFilterButtons.lua"/>	
+	<Script file="TutorialBuster.lua"/>
+</Ui>
+
