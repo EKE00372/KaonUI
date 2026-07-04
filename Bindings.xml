@@ -1,0 +1,7 @@
+<Bindings>
+	<Binding name="SPOTME" category="ADDONS">
+		SpotMe:ToggleVisibility()
+	</Binding>
+	
+	<!--Binding name="CLICK DejaMark:LeftButton" category="ADDONS"/-->
+</Bindings>

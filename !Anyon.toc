@@ -1,0 +1,17 @@
+﻿## Interface: 120100, 120005
+## Title: !|cff00ffffAny|ron
+## Notes: They should be there, but they didn't: misc collect and default UI settings.
+## Version: 1.0
+## OptionalDeps: LibStub
+## X-Credits: funkehdude, Phanx, oscarucb, nbluewiz, p3lim, Siweia, HopeASD, Paopao001
+
+#Libs\Libs.xml
+
+Config.lua
+
+BlizzFix\BlizzFix.xml
+
+Misc\Misc.xml
+#Combat\Combat.xml
+
+SetUI.lua

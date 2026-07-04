@@ -1,0 +1,16 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="BlizzFix\UIScale.lua"/>
+	<!--Script file="BlizzFix\OmniCC.lua"/-->
+	
+	<!-- taint visit house -->
+	<!--Script file="BlizzFix\FuckYou.lua"/-->
+
+	<Script file="BlizzFix\HideTutorial.lua"/>
+	<Script file="idTip.lua"/>
+	
+	<!--Script file="BlizzFix\PUGFilter.lua"/-->
+	<Script file="BlizzFix\SlashCMD.lua"/>
+	
+	<Script file="tullaRange.lua"/>
+	<Script file="BlizzFix\Tweaks.lua"/>
+</Ui>
