@@ -54,15 +54,6 @@ local CliquePresets = {
 	},
 }
 
-local function GetPlayerCliqueKey()
-	local realmName = GetRealmName()
-	if not realmName or realmName == "" then
-		return nil
-	end
-
-	return UnitName("player") .. " - " .. realmName
-end
-
 local function SetClique(class)
 	if not C_AddOns.IsAddOnLoaded("Clique") then return end
 
