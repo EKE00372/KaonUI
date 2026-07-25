@@ -1,16 +1,18 @@
-﻿## Interface: 120100, 120005
+## Interface: 120100, 120007
 ## Title: !|cff00ffffAny|ron
 ## Notes: They should be there, but they didn't: misc collect and default UI settings.
 ## Version: 1.0
-## OptionalDeps: LibStub
+## SavedVariables: AnyonDB
+## OptionalDeps: LibStub, Blizzard_AuraContainer
 ## X-Credits: funkehdude, Phanx, oscarucb, nbluewiz, p3lim, Siweia, HopeASD, Paopao001
 
 #Libs\Libs.xml
 
-Config.lua
+Init.lua
+Locale.lua
+GUI.lua
 
-BlizzFix\BlizzFix.xml
-
+Interface\Interface.xml
 Misc\Misc.xml
 #Combat\Combat.xml
 
