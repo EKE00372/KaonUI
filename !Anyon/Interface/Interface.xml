@@ -1,0 +1,12 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="Interface\UIScale.lua"/>
+	<Script file="Interface\Auras.lua"/>
+	<Script file="Interface\idTip.lua"/>
+	<Script file="Interface\tullaCTC.lua"/>
+	<Script file="Interface\tullaRange.lua"/>
+	<Script file="Interface\MicroMenu.lua"/>
+	<Script file="Interface\BetterRaid.lua"/>
+	<Script file="Interface\HideTutorial.lua"/>
+	<Script file="Interface\Talkinghead.lua"/>
+	<Script file="Interface\Tweaks.lua"/>
+</Ui>
