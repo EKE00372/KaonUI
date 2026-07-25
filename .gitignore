@@ -1,0 +1,7 @@
+# Local agent rules, documentation and development tools.
+/AGENTS.md
+/CODE_REVIEW.md
+/.agents/
+/Docs/
+/Tools/
+/taint test/
