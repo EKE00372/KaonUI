@@ -51,6 +51,7 @@ local MediaFolder = "Interface\\AddOns\\!Anyon\\Media\\"
 		["idTip_Opt3"] = false,
 		["tullaCTC"] = true,
 		["tullaRange"] = true,
+		["ActionbarStyle"] = true,
 		["MicroMenu"] = true,
 		["BetterRaid"] = true,
 		["HideTutorial"] = true,

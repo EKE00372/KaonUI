@@ -39,6 +39,9 @@ if GetLocale() == "zhTW" then
     L.tullaRange = "快捷鍵染色"
     L.tullaRange_Desc = "根據距離和資源染色快捷鍵按鈕。\n\n代碼引用：https://www.curseforge.com/wow/addons/tullarange"
 
+    L.ActionbarStyle = "快捷列美化"
+    L.ActionbarStyle_Desc = "替暴雪原生快捷列按鈕加上柔和的毛絨陰影。"
+
     L.MicroMenu = "彩色微型選單"
     L.MicroMenu_Desc = "扁平風格的彩色微型選單，滑鼠指向淡入淡出，並隱藏背包欄。"
 
@@ -70,7 +73,7 @@ if GetLocale() == "zhTW" then
     L.AutoShot_Desc = "等級提升、獲得成就、完成限時地城和死亡時自動截圖。"
 
     L.CompassCastbar = "羅盤施法條"
-    L.CompassCastbar_Desc = "滑鼠位置顯示羅盤樣式的施法條。\n\n代碼引用：https://www.wowinterface.com/downloads/info24278-rCompassCastbar.html"
+    L.CompassCastbar_Desc = "滑鼠位置顯示羅盤樣式的施法條。\n\n代碼引用：https://github.com/zorker/rothui/blob/master/wow11.0/rCompassCastbar/rCompassCastbar.lua"
 
     L.ShiftRight = "Shift 右鍵存取"
     L.ShiftRight_Desc = "背包或銀行物品可 Shift + 右鍵點擊批量移動。\n\n代碼引用：https://www.curseforge.com/wow/addons/shift-right"
@@ -104,6 +107,9 @@ else
 
     L.tullaRange = "Colored actionbar"
     L.tullaRange_Desc = "Actionbar button color by range and resource.\n\nSource: https://www.curseforge.com/wow/addons/tullarange"
+
+    L.ActionbarStyle = "Actionbar style"
+    L.ActionbarStyle_Desc = "Add a soft fluffy shadow behind Blizzard actionbar buttons."
 
     L.MicroMenu = "Colorful micro menu"
     L.MicroMenu_Desc = "Colorful micro menu with mouseover fadin, also hide bagsbar."

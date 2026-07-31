@@ -3,6 +3,7 @@ local C, F, G, L = unpack(ns)
 
 local ADDON_TITLE = "!Anyon"
 local SETTING_PREFIX = "Anyon_"
+local ACTION_BAR_HEADER = ACTIONBARS_LABEL
 
 local pairs, ipairs, type = pairs, ipairs, type
 local format = string.format
@@ -42,13 +43,16 @@ local OPTIONS = {
 	{ key = "UIScale", nameKey = "UIScale", descKey = "UIScale_Desc" },
 	{ key = "AuraFrames", nameKey = "AuraFrames", descKey = "AuraFrames_Desc" },
 	IDTIP_DROPDOWN,
-	{ key = "tullaCTC", nameKey = "tullaCTC", descKey = "tullaCTC_Desc" },
-	{ key = "tullaRange", nameKey = "tullaRange", descKey = "tullaRange_Desc" },
 	{ key = "MicroMenu", nameKey = "MicroMenu", descKey = "MicroMenu_Desc" },
 	{ key = "BetterRaid", nameKey = "BetterRaid", descKey = "BetterRaid_Desc" },
 	{ key = "HideTutorial", nameKey = "HideTutorial", descKey = "HideTutorial_Desc" },
 	{ key = "DragEmAll", nameKey = "DragEmAll", descKey = "DragEmAll_Desc" },
 	{ key = "TalkingHeadMode", nameKey = "TalkingHead", descKey = "TalkingHead_Desc", choices = TALKING_HEAD_OPTIONS },
+
+	{ header = ACTION_BAR_HEADER },
+	{ key = "tullaCTC", nameKey = "tullaCTC", descKey = "tullaCTC_Desc" },
+	{ key = "tullaRange", nameKey = "tullaRange", descKey = "tullaRange_Desc" },
+	{ key = "ActionbarStyle", nameKey = "ActionbarStyle", descKey = "ActionbarStyle_Desc" },
 
 	{ header = BINDING_HEADER_MISC },
 	{ key = "AutoInvite", nameKey = "AutoInvite", descKey = "AutoInvite_Desc" },

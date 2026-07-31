@@ -13,6 +13,7 @@ Locale.lua
 GUI.lua
 
 Interface\Interface.xml
+Actionbar\Actionbar.xml
 Misc\Misc.xml
 #Combat\Combat.xml
 

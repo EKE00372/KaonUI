@@ -1,0 +1,6 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="Actionbar\tullaCTC.lua"/>
+	<Script file="Actionbar\tullaRange.lua"/>
+	<Script file="Actionbar\Order.lua"/>
+	<Script file="Actionbar\Style.lua"/>
+</Ui>

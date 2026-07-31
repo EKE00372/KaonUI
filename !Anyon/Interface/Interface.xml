@@ -2,8 +2,6 @@
 	<Script file="Interface\UIScale.lua"/>
 	<Script file="Interface\Auras.lua"/>
 	<Script file="Interface\idTip.lua"/>
-	<Script file="Interface\tullaCTC.lua"/>
-	<Script file="Interface\tullaRange.lua"/>
 	<Script file="Interface\MicroMenu.lua"/>
 	<Script file="Interface\BetterRaid.lua"/>
 	<Script file="Interface\HideTutorial.lua"/>
