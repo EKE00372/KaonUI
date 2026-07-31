@@ -11,7 +11,7 @@ local C_Spell_GetSpellCooldown = C_Spell.GetSpellCooldown
 local CreateFrame, GetCursorPosition, GetTime = CreateFrame, GetCursorPosition, GetTime
 local UnitCastingInfo, UnitChannelInfo = UnitCastingInfo, UnitChannelInfo
 
-local TEXTURE_PATH = "Interface\\AddOns\\!Anyon\\Media\\"
+local TEXTURE_PATH = "Interface\\AddOns\\!Anyon\\Media\\rCompassCastbar\\"
 local RING_SIZE = 512
 local GCD_SPELL_ID = 61304
 
