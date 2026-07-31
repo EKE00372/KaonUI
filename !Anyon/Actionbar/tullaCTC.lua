@@ -203,7 +203,6 @@ function M:OnEnable()
 	font:SetShadowColor(1, 1, 1, 0)
 	font:SetShadowOffset(0, 0)
 
-	local active = {}
 	local textContainers = {}
 	local formatter
 	local loaded
@@ -217,6 +216,7 @@ function M:OnEnable()
 	end
 
 	local function styleCooldown(cooldown)
+		if cooldown.tullaCTCStyled then return end
 		if cooldown.noCooldownCount then return end
 		if cooldown.IsForbidden and cooldown:IsForbidden() then return end
 
@@ -232,6 +232,7 @@ function M:OnEnable()
 		text:SetJustifyV("TOP")
 		text:SetShadowColor(1, 1, 1, 0)
 		text:SetShadowOffset(0, 0)
+		cooldown.tullaCTCStyled = true
 	end
 
 	local nextid
@@ -243,14 +244,8 @@ function M:OnEnable()
 		end
 	end
 
-	local function onCooldownStop(cooldown)
-		local cooldownID = cooldown.tullaCTC
-		if cooldownID then
-			active[cooldownID] = nil
-		end
-	end
-
 	local function raiseCooldownText(cooldown, cooldownID)
+		if cooldown.tullaCTCTextRaised then return end
 		if InCombatLockdown() then return end
 
 		local parent = cooldown:GetParent()
@@ -268,26 +263,23 @@ function M:OnEnable()
 
 				textContainers[cooldownID] = container
 			end
+
+			cooldown.tullaCTCTextRaised = true
 		end
 	end
 
 	local function onCooldownStart(cooldown)
-		if cooldown.noCooldownCount then
-			onCooldownStop(cooldown)
-			return
-		end
+		if cooldown.noCooldownCount then return end
 		if cooldown.IsForbidden and cooldown:IsForbidden() then return end
 
 		local cooldownID = cooldown.tullaCTC
 		if cooldownID == nil then
 			cooldownID = nextid()
 			cooldown.tullaCTC = cooldownID
-			cooldown:HookScript("OnCooldownDone", onCooldownStop)
 		end
 
 		raiseCooldownText(cooldown, cooldownID)
 		styleCooldown(cooldown)
-		active[cooldownID] = cooldown
 	end
 
 	local function initialize()
@@ -301,7 +293,6 @@ function M:OnEnable()
 		hooksecurefunc(cooldownIndex, "SetCooldownFromDurationObject", onCooldownStart)
 		hooksecurefunc(cooldownIndex, "SetCooldownFromExpirationTime", onCooldownStart)
 		hooksecurefunc(cooldownIndex, "SetCooldownUNIX", onCooldownStart)
-		hooksecurefunc(cooldownIndex, "Clear", onCooldownStop)
 
 		if CooldownFrame_SetDisplayAsPercentage then
 			hooksecurefunc("CooldownFrame_SetDisplayAsPercentage", function(cooldown)
