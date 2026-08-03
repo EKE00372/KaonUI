@@ -12,9 +12,9 @@ local FONT_NAME, FONT_FACE = "tullaCTCfont", G.CTCFont
 local FONT_FLAGS, FONT_SIZE = "OUTLINE", 18
 
 -- 時間格式：
--- 小於 2.5 秒顯示小數；小於 90 秒顯示秒數；90 秒以上顯示分:秒；5 分鐘以上顯示分鐘。
+-- 小於 2.5 秒顯示小數；小於 90 秒顯示秒數；90 秒以上顯示分:秒；超過 3 分鐘顯示分鐘。
 local TENTHS_THRESHOLD, MMSS_THRESHOLD = 2.5, 90
-local MINUTES_THRESHOLD, HOURS_THRESHOLD = 300.5, 3600
+local MINUTES_THRESHOLD, HOURS_THRESHOLD = 180.5, 3600
 local DAYS_THRESHOLD, ROUNDING_MODE = 86400, "Nearest"
 
 -- 文字顏色，threshold 是該顏色區間的結束秒數。
@@ -93,14 +93,14 @@ local function getFormatBreakpoints()
 
 	tinsert(points, {
 		threshold = MINUTES_THRESHOLD,
-		format = "%d",
+		format = "%dm",
 		components = { { div = MINUTE, rounding = roundingMode, step = 1 } },
 	})
 
 	if HOURS_THRESHOLD > MINUTES_THRESHOLD then
 		tinsert(points, {
 			threshold = HOURS_THRESHOLD,
-			format = "%d",
+			format = "%dh",
 			components = { { div = HOUR, rounding = roundingMode, step = 1 } },
 		})
 	end
