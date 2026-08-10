@@ -3,11 +3,19 @@ local C, F, G = unpack(ns)
 local M = F.RegisterModule("AuraFrames", "AuraFrames")
 
 local _G = getfenv(0)
+local ceil, floor = math.ceil, math.floor
 local ipairs, unpack = ipairs, unpack
 local CreateFrame, RegisterStateDriver = CreateFrame, RegisterStateDriver
-local UnitHasVehicleUI, UIParent = UnitHasVehicleUI, UIParent
+local UnitHasVehiclePlayerFrameUI, UIParent = UnitHasVehiclePlayerFrameUI, UIParent
 
 local AURA_BORDER_PADDING = 1
+local MAX_PLAYER_BUFFS = 32
+local MAX_PLAYER_DEBUFFS = 24
+local GetTemporaryEnchantmentInfo = C_PaperDollInfo.GetTemporaryEnchantmentInfo
+local BUFF_GROUP_KEY = "Buffs"
+local ITEM_ENCHANTMENT_SLOTS = { INVSLOT_MAINHAND, INVSLOT_OFFHAND, INVSLOT_RANGED }
+local buffContainer
+local buffItemEnchantments
 local auraContainers = {}
 local builtFrames
 
@@ -31,6 +39,24 @@ local function HideObject(frame)
 	end
 end
 
+-- Keep Blizzard's deadly-debuff alerts while hiding its debuff icons.
+local function HideBlizzardDebuffVisuals(frame)
+	if not frame then return end
+
+	frame:SetAlpha(0)
+	frame:EnableMouse(false)
+
+	if frame.AuraContainer then
+		frame.AuraContainer:Hide()
+	end
+
+	for _, anchor in ipairs(frame.PrivateAuraAnchors or {}) do
+		anchor:Hide()
+	end
+
+	frame:Show()
+end
+
 -- 關閉原生光環
 local function HideBlizzardAuraFrames()
 	if _G.BuffFrame then
@@ -39,7 +65,7 @@ local function HideBlizzardAuraFrames()
 	end
 
 	if _G.DebuffFrame then
-		HideObject(_G.DebuffFrame)
+		HideBlizzardDebuffVisuals(_G.DebuffFrame)
 	end
 end
 
@@ -97,7 +123,20 @@ end
 
 -- 載具判斷
 local function GetUnitToken()
-	return UnitHasVehicleUI("player") and "vehicle" or "player"
+	return UnitHasVehiclePlayerFrameUI("player") and "vehicle" or "player"
+end
+
+local function UpdateItemEnchantmentVisibility(unit)
+	if not buffItemEnchantments then return end
+
+	local shown = unit == "player"
+	for _, button in ipairs(buffItemEnchantments.buttons) do
+		button:SetAlpha(shown and 1 or 0)
+	end
+
+	for index, blocker in ipairs(buffItemEnchantments.blockers) do
+		blocker:SetShown(not shown and index <= buffItemEnchantments.activeCount)
+	end
 end
 
 -- 載具狀態改變時切換 AuraContainer 的獲取對象
@@ -106,6 +145,27 @@ local function UpdateContainerUnits()
 
 	for _, container in ipairs(auraContainers) do
 		container:SetUnit(unit)
+	end
+
+	UpdateItemEnchantmentVisibility(unit)
+end
+
+-- Temporary enchants take priority within the 32 visible buff slots.
+local function UpdateBuffAuraLimit()
+	if not buffContainer then return end
+
+	local activeEnchantments = 0
+	for _, slot in ipairs(ITEM_ENCHANTMENT_SLOTS) do
+		local enchantmentInfo = GetTemporaryEnchantmentInfo(slot)
+		if enchantmentInfo and enchantmentInfo.hasExpirationTime then
+			activeEnchantments = activeEnchantments + 1
+		end
+	end
+
+	buffContainer:SetAuraGroupMaxFrameCount(BUFF_GROUP_KEY, MAX_PLAYER_BUFFS - activeEnchantments)
+	if buffItemEnchantments then
+		buffItemEnchantments.activeCount = activeEnchantments
+		UpdateItemEnchantmentVisibility(GetUnitToken())
 	end
 end
 
@@ -241,7 +301,7 @@ end
 -- 讓新增光環按指定規則初始化
 local function AddAuraGroup(container, key, filter, cfg, canCancelAura)
 	container:AddAuraGroup(key, filter, {
-		maxFrameCount = cfg.wrapAfter * cfg.maxWraps,
+		maxFrameCount = cfg.maxFrameCount,
 		initializeFrame = CreateAuraButtonInitializer(cfg, canCancelAura, filter == "HARMFUL"),
 		sortMethod = AuraContainerSortMethod.Default,
 		sortDirection = AuraContainerSortDirection.Normal,
@@ -253,17 +313,39 @@ end
 local function AddItemEnchantments(container, cfg)
 	local options = {
 		hidePermanent = true,
-		initializeFrame = CreateAuraButtonInitializer(cfg, false),
+		initializeFrame = CreateAuraButtonInitializer(cfg, true),
 	}
 
-	container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.MainHand, options)
-	container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.OffHand, options)
-	container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.Ranged, options)
+	local buttons = {
+		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.MainHand, options),
+		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.OffHand, options),
+		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.Ranged, options),
+	}
 	container:SetItemEnchantmentSortMethod(AuraContainerItemEnchantmentSortMethod.Slot, AuraContainerSortDirection.Normal)
 
 	local layout = GetLayoutOptions(cfg)
 	layout.placement = CustomAuraContainerItemEnchantmentPlacement.BeforeAuraGroups
 	container:SetItemEnchantmentLayout(layout)
+
+	-- AuraButton 禁止 ChangeParent；透明 sibling 在載具狀態攔截隱形按鈕的滑鼠輸入。
+	local blockers = {}
+	for index = 1, #ITEM_ENCHANTMENT_SLOTS do
+		local column = (index - 1) % cfg.wrapAfter
+		local row = floor((index - 1) / cfg.wrapAfter)
+		local blocker = CreateFrame("Frame", nil, container)
+		blocker:SetSize(cfg.size, cfg.size + cfg.offset)
+		blocker:SetPoint("TOPRIGHT", container, "TOPRIGHT", -column * (cfg.size + C.Auras.Margin), -row * (cfg.size + cfg.offset))
+		blocker:SetFrameLevel(container:GetFrameLevel() + 100)
+		blocker:EnableMouse(true)
+		blocker:Hide()
+		blockers[index] = blocker
+	end
+
+	return {
+		activeCount = 0,
+		blockers = blockers,
+		buttons = buttons,
+	}
 end
 
 -- 建立框體
@@ -282,8 +364,9 @@ local function CreateAuraContainer(name, groupKey, filter, cfg, canCancelAura, i
 	container:SetEnabled(false)
 	ConfigureAuraContainer(container, cfg)
 
+	local itemEnchantments
 	if includeItemEnchantments then
-		AddItemEnchantments(container, cfg)
+		itemEnchantments = AddItemEnchantments(container, cfg)
 	end
 
 	AddAuraGroup(container, groupKey, filter, cfg, canCancelAura)
@@ -291,7 +374,7 @@ local function CreateAuraContainer(name, groupKey, filter, cfg, canCancelAura, i
 	container:SetEnabled(true)
 
 	auraContainers[#auraContainers + 1] = container
-	return holder, container
+	return holder, container, itemEnchantments
 end
 
 -- 建立
@@ -307,17 +390,21 @@ local function BuildAuraFrames()
 		offset = 12,
 		size = C.Auras.BuffSize,
 		wrapAfter = C.Auras.BuffsPerRow,
-		maxWraps = 3,
+		maxWraps = ceil(MAX_PLAYER_BUFFS / C.Auras.BuffsPerRow),
+		maxFrameCount = MAX_PLAYER_BUFFS,
 	}
 
 	local debuffCfg = {
 		offset = 12,
 		size = C.Auras.DebuffSize,
 		wrapAfter = C.Auras.DebuffsPerRow,
-		maxWraps = 2,
+		maxWraps = ceil(MAX_PLAYER_DEBUFFS / C.Auras.DebuffsPerRow),
+		maxFrameCount = MAX_PLAYER_DEBUFFS,
 	}
 
-	local buffs = CreateAuraContainer("AnyonPlayerBuffs", "Buffs", "HELPFUL", buffCfg, true, true)
+	local buffs
+	buffs, buffContainer, buffItemEnchantments = CreateAuraContainer("AnyonPlayerBuffs", BUFF_GROUP_KEY, "HELPFUL", buffCfg, true, true)
+	UpdateBuffAuraLimit()
 	buffs:ClearAllPoints()
 	buffs:SetPoint(unpack(C.Auras.BuffPos))
 
@@ -336,6 +423,11 @@ local function OnEvent(_, event, unit)
 		if builtFrames then
 			HideBlizzardAuraFrames()
 			UpdateContainerUnits()
+			UpdateBuffAuraLimit()
+		end
+	elseif event == "WEAPON_ENCHANT_CHANGED" or event == "WEAPON_SLOT_CHANGED" then
+		if builtFrames then
+			UpdateBuffAuraLimit()
 		end
 	elseif unit == "player" and builtFrames then
 		UpdateContainerUnits()
@@ -348,6 +440,9 @@ function M:OnEnable()
 	local loader = CreateFrame("Frame")
 	loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 	loader:RegisterEvent("UNIT_ENTERED_VEHICLE")
+	loader:RegisterEvent("UNIT_EXITING_VEHICLE")
 	loader:RegisterEvent("UNIT_EXITED_VEHICLE")
+	loader:RegisterEvent("WEAPON_ENCHANT_CHANGED")
+	loader:RegisterEvent("WEAPON_SLOT_CHANGED")
 	loader:SetScript("OnEvent", OnEvent)
 end
