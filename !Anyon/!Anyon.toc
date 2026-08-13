@@ -17,4 +17,5 @@ Actionbar\Actionbar.xml
 Misc\Misc.xml
 #Combat\Combat.xml
 
+SetChat.lua
 SetUI.lua
