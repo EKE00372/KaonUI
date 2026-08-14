@@ -3,21 +3,17 @@ local C, F, G = unpack(ns)
 local M = F.RegisterModule("AuraFrames", "AuraFrames")
 
 local _G = getfenv(0)
-local ceil, floor = math.ceil, math.floor
+local ceil = math.ceil
 local ipairs, unpack = ipairs, unpack
 local CreateFrame, RegisterStateDriver = CreateFrame, RegisterStateDriver
 local UnitHasVehiclePlayerFrameUI, UIParent = UnitHasVehiclePlayerFrameUI, UIParent
-
-local AURA_BORDER_PADDING = 1
-local MAX_PLAYER_BUFFS = 32
-local MAX_PLAYER_DEBUFFS = 24
 local GetTemporaryEnchantmentInfo = C_PaperDollInfo.GetTemporaryEnchantmentInfo
+
+local MAX_PLAYER_BUFFS, MAX_PLAYER_DEBUFFS = 32, 24	-- 16 debuff+ 6 private aura
 local BUFF_GROUP_KEY = "Buffs"
 local ITEM_ENCHANTMENT_SLOTS = { INVSLOT_MAINHAND, INVSLOT_OFFHAND, INVSLOT_RANGED }
 local buffContainer
-local buffItemEnchantments
 local auraContainers = {}
-local builtFrames
 
 ------------------------------
 -- Hide blizzard aura frame --
@@ -39,33 +35,28 @@ local function HideObject(frame)
 	end
 end
 
--- Keep Blizzard's deadly-debuff alerts while hiding its debuff icons.
-local function HideBlizzardDebuffVisuals(frame)
-	if not frame then return end
-
-	frame:SetAlpha(0)
-	frame:EnableMouse(false)
-
-	if frame.AuraContainer then
-		frame.AuraContainer:Hide()
-	end
-
-	for _, anchor in ipairs(frame.PrivateAuraAnchors or {}) do
-		anchor:Hide()
-	end
-
-	frame:Show()
-end
-
 -- 關閉原生光環
-local function HideBlizzardAuraFrames()
+local function HideBlizzardAura()
 	if _G.BuffFrame then
 		HideObject(_G.BuffFrame)
 		_G.BuffFrame.numHideableBuffs = 0
 	end
 
 	if _G.DebuffFrame then
-		HideBlizzardDebuffVisuals(_G.DebuffFrame)
+		-- 直接幹掉原生減益會使致命減益提示消失，因此只隱藏減益圖示並關閉滑鼠互動
+		local frame = _G.DebuffFrame
+		frame:SetAlpha(0)
+		frame:EnableMouse(false)
+
+		if frame.AuraContainer then
+			frame.AuraContainer:Hide()
+		end
+
+		for _, anchor in ipairs(frame.PrivateAuraAnchors or {}) do
+			anchor:Hide()
+		end
+
+		frame:Show()
 	end
 end
 
@@ -74,14 +65,13 @@ end
 -----------------
 
 -- 倒數文字格式
-local durationFormatter
-local function GetDurationFormatter()
-	if durationFormatter then return durationFormatter end
+local durationBinding
+local function GetDurationBinding()
+	if durationBinding then return durationBinding end
 
 	local rounding = Enum.NumericRuleFormatRounding.Up
-
-	durationFormatter = C_StringUtil.CreateNumericRuleFormatter()
-	durationFormatter:SetBreakpoints({
+	local formatter = C_StringUtil.CreateNumericRuleFormatter()
+	formatter:SetBreakpoints({
 		{
 			threshold = 0,
 			format = "%dS",
@@ -90,6 +80,13 @@ local function GetDurationFormatter()
 		},
 		{
 			threshold = 60,
+			format = "%d:%02d",
+			rounding = rounding,
+			step = 1,
+			components = { { div = 60 }, { mod = 60 } },
+		},
+		{
+			threshold = 300,
 			format = "%dM",
 			components = { { div = 60, rounding = rounding, step = 1 } },
 		},
@@ -105,7 +102,13 @@ local function GetDurationFormatter()
 		},
 	})
 
-	return durationFormatter
+	-- 永久光環不顯示倒數文字
+	durationBinding = C_DurationUtil.CreateDurationTextBinding()
+	durationBinding:SetFormatter(formatter)
+	durationBinding:SetExpiredText("")
+	durationBinding:SetZeroDurationText("")
+
+	return durationBinding
 end
 
 -- 倒數文字樣式
@@ -117,41 +120,25 @@ local function SetFont(fontString, size)
 	fontString:SetWordWrap(false)
 end
 
--------------
--- Vehicle --
--------------
+--------------
+-- Function --
+--------------
 
 -- 載具判斷
 local function GetUnitToken()
 	return UnitHasVehiclePlayerFrameUI("player") and "vehicle" or "player"
 end
 
-local function UpdateItemEnchantmentVisibility(unit)
-	if not buffItemEnchantments then return end
-
-	local shown = unit == "player"
-	for _, button in ipairs(buffItemEnchantments.buttons) do
-		button:SetAlpha(shown and 1 or 0)
-	end
-
-	for index, blocker in ipairs(buffItemEnchantments.blockers) do
-		blocker:SetShown(not shown and index <= buffItemEnchantments.activeCount)
-	end
-end
-
 -- 載具狀態改變時切換 AuraContainer 的獲取對象
-local function UpdateContainerUnits()
+local function UpdateUnits()
 	local unit = GetUnitToken()
-
 	for _, container in ipairs(auraContainers) do
 		container:SetUnit(unit)
 	end
-
-	UpdateItemEnchantmentVisibility(unit)
 end
 
--- Temporary enchants take priority within the 32 visible buff slots.
-local function UpdateBuffAuraLimit()
+-- 將臨時附魔數量計入增益光環總數
+local function UpdateBuffLimit()
 	if not buffContainer then return end
 
 	local activeEnchantments = 0
@@ -163,61 +150,14 @@ local function UpdateBuffAuraLimit()
 	end
 
 	buffContainer:SetAuraGroupMaxFrameCount(BUFF_GROUP_KEY, MAX_PLAYER_BUFFS - activeEnchantments)
-	if buffItemEnchantments then
-		buffItemEnchantments.activeCount = activeEnchantments
-		UpdateItemEnchantmentVisibility(GetUnitToken())
-	end
 end
 
 ----------
--- core --
+-- Core --
 ----------
-
--- 計算每行光環的圖示與間距加總寬度
-local function GetRowWidth(cfg)
-	return (cfg.size * cfg.wrapAfter) + (C.Auras.Margin * (cfg.wrapAfter - 1))
-end
-
--- holder 寬度做為定位基準
-local function GetHolderWidth(cfg)
-	return (cfg.size + C.Auras.Margin) * cfg.wrapAfter
-end
-
--- holder 高度包含文字占用的空間
-local function GetHolderHeight(cfg)
-	return (cfg.size + cfg.offset) * cfg.maxWraps
-end
-
--- 減益類型邊框染色
-local function SetDefaultDebuffBorderColor(texture)
-	local color = AuraUtil and AuraUtil.GetAuraBorderColor and AuraUtil.GetAuraBorderColor()
-	if color and color.GetRGBA then
-		texture:SetVertexColor(color:GetRGBA())
-	else
-		texture:SetVertexColor(.8, 0, 0, 1)
-	end
-end
-
--- 減益驅散邊框
-local function AddDispelBorder(button, texture)
-	button:AddDispelTypeTexture(texture, {
-		showWhenHelpful = false,
-		showWhenHarmful = true,
-		style = Enum.CustomAuraButtonDispelTypeTextureStyle.PreserveAsset,
-	})
-end
-
--- 永久光環不顯示倒數文字
-local function SetDurationText(button, fontString)
-	local binding = C_DurationUtil.CreateDurationTextBinding()
-	binding:SetFormatter(GetDurationFormatter())
-	binding:SetExpiredText("")
-	binding:SetZeroDurationText("")
-	button:SetDurationText(fontString, { binding = binding, })
-end
 
 -- 初始化每個光環的外觀
-local function CreateAuraButtonInitializer(cfg, canCancelAura, showDefaultDebuffBorder)
+local function CreateAuraButton(cfg, canCancelAura, isDebuff, isItemEnchantment)
 	return function(button)
 		local size = cfg.size
 		local fullHeight = cfg.size + cfg.offset
@@ -229,21 +169,20 @@ local function CreateAuraButtonInitializer(cfg, canCancelAura, showDefaultDebuff
 		iconFrame:SetPoint("TOP", button, "TOP")
 		button.IconFrame = iconFrame
 
-		if showDefaultDebuffBorder then
-			-- 無類型減益顯示紅框
-			local defaultBorder = iconFrame:CreateTexture(nil, "OVERLAY", nil, 0)
-			defaultBorder:SetTexture(G.BorderTex)
-			defaultBorder:SetPoint("TOPLEFT", iconFrame, -AURA_BORDER_PADDING, AURA_BORDER_PADDING)
-			defaultBorder:SetPoint("BOTTOMRIGHT", iconFrame, AURA_BORDER_PADDING, -AURA_BORDER_PADDING)
-			SetDefaultDebuffBorderColor(defaultBorder)
+		-- 減益類型染色
+		if isDebuff then
+			local debuffBorder = iconFrame:CreateTexture(nil, "OVERLAY", nil, 1)
+			debuffBorder:SetTexture(G.BorderTex)
+			debuffBorder:SetPoint("TOPLEFT", iconFrame, -1, 1)
+			debuffBorder:SetPoint("BOTTOMRIGHT", iconFrame, 1, -1)
+			debuffBorder:Hide()
+			button:AddDispelTypeTexture(debuffBorder, {
+				showWhenHelpful = false,
+				showWhenHarmful = true,
+				showWithoutDispelType = true,
+				style = Enum.CustomAuraButtonDispelTypeTextureStyle.PreserveAsset,
+			})
 		end
-
-		local dispelBorder = iconFrame:CreateTexture(nil, "OVERLAY", nil, 1)
-		dispelBorder:SetTexture(G.BorderTex)
-		dispelBorder:SetPoint("TOPLEFT", iconFrame, -AURA_BORDER_PADDING, AURA_BORDER_PADDING)
-		dispelBorder:SetPoint("BOTTOMRIGHT", iconFrame, AURA_BORDER_PADDING, -AURA_BORDER_PADDING)
-		dispelBorder:Hide()
-		AddDispelBorder(button, dispelBorder)
 
 		local icon = iconFrame:CreateTexture(nil, "ARTWORK")
 		icon:SetPoint("TOPLEFT", iconFrame, 1, -1)
@@ -261,99 +200,51 @@ local function CreateAuraButtonInitializer(cfg, canCancelAura, showDefaultDebuff
 		local duration = button:CreateFontString(nil, "OVERLAY")
 		duration:SetPoint("TOP", iconFrame, "BOTTOM", 1, 2)
 		SetFont(duration, C.Auras.TimerFontSize)
-		SetDurationText(button, duration)
+		button:SetDurationText(duration, { binding = GetDurationBinding(), })
 
 		local highlight = button:CreateTexture(nil, "HIGHLIGHT")
 		highlight:SetColorTexture(1, 1, 1, 0.25)
 		highlight:SetAllPoints(iconFrame)
 
 		local border = F.CreateBD(iconFrame, iconFrame, 1, .1, .1, .1, 1)
+		-- 臨時附魔外框色
+		if isItemEnchantment then
+			border:SetBackdropBorderColor(.64, .21, .93, 1)
+		end
 		local shadow = F.CreateSD(iconFrame, iconFrame, 4)
 		border:EnableMouse(false)
 		shadow:EnableMouse(false)
 
-		-- 右鍵取消光環仍由 Blizzard AuraButton 處理
+		-- 保留右鍵取消光環
 		button:SetCancelAuraButtons(canCancelAura and "RightButtonUp" or nil)
 	end
 end
 
--- 錨點、位置與增長方向
-local function ConfigureAuraContainer(container, cfg)
-	container:SetFlowLayoutAxis(AnchorUtil.FlowLayoutAxis.Horizontal)
-	container:SetFlowLayoutAnchorPoint("TOPRIGHT")
-	container:SetFlowLayoutGrowthDirection(AnchorUtil.FlowDirection.Left, AnchorUtil.FlowDirection.Down)
-	container:SetFlowLayoutPadding(0, 0, 0, 0)
-	container:SetFlowLayoutMaximumLineSize(GetRowWidth(cfg))
-end
-
+-- 取得布局設定
 local function GetLayoutOptions(cfg)
 	return {
-		elementSpacing = C.Auras.Margin,
+		elementSpacing = C.Auras.Margin,	-- 同組光環相鄰間距
 		lineSpacing = 0,
-		-- 前一組最後一顆已保留 elementSpacing，這裡避免附魔組和 aura 組多一段間距。
-		groupSpacing = 0,
+		groupSpacing = 0,	-- 跨組光環額外間距，臨時附魔與增益不增加額外間距故為0
 		groupLineSpacing = 0,
 		elementWidth = cfg.size,
 		elementHeight = cfg.size + cfg.offset,
 	}
 end
 
--- 讓新增光環按指定規則初始化
-local function AddAuraGroup(container, key, filter, cfg, canCancelAura)
-	container:AddAuraGroup(key, filter, {
-		maxFrameCount = cfg.maxFrameCount,
-		initializeFrame = CreateAuraButtonInitializer(cfg, canCancelAura, filter == "HARMFUL"),
-		sortMethod = AuraContainerSortMethod.Default,
-		sortDirection = AuraContainerSortDirection.Normal,
-		layout = GetLayoutOptions(cfg),
-	})
-end
+------------------
+-- Build frames --
+------------------
 
--- 臨時附魔前置，永久附魔隱藏
-local function AddItemEnchantments(container, cfg)
-	local options = {
-		hidePermanent = true,
-		initializeFrame = CreateAuraButtonInitializer(cfg, true),
-	}
-
-	local buttons = {
-		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.MainHand, options),
-		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.OffHand, options),
-		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.Ranged, options),
-	}
-	container:SetItemEnchantmentSortMethod(AuraContainerItemEnchantmentSortMethod.Slot, AuraContainerSortDirection.Normal)
-
-	local layout = GetLayoutOptions(cfg)
-	layout.placement = CustomAuraContainerItemEnchantmentPlacement.BeforeAuraGroups
-	container:SetItemEnchantmentLayout(layout)
-
-	-- AuraButton 禁止 ChangeParent；透明 sibling 在載具狀態攔截隱形按鈕的滑鼠輸入。
-	local blockers = {}
-	for index = 1, #ITEM_ENCHANTMENT_SLOTS do
-		local column = (index - 1) % cfg.wrapAfter
-		local row = floor((index - 1) / cfg.wrapAfter)
-		local blocker = CreateFrame("Frame", nil, container)
-		blocker:SetSize(cfg.size, cfg.size + cfg.offset)
-		blocker:SetPoint("TOPRIGHT", container, "TOPRIGHT", -column * (cfg.size + C.Auras.Margin), -row * (cfg.size + cfg.offset))
-		blocker:SetFrameLevel(container:GetFrameLevel() + 100)
-		blocker:EnableMouse(true)
-		blocker:Hide()
-		blockers[index] = blocker
-	end
-
-	return {
-		activeCount = 0,
-		blockers = blockers,
-		buttons = buttons,
-	}
-end
-
--- 建立框體
+-- 建立光環容器
 -- holder 負責框體定位，container 負責處理光環
 local function CreateAuraContainer(name, groupKey, filter, cfg, canCancelAura, includeItemEnchantments)
 	local holder = CreateFrame("Frame", name, UIParent)
+	local holderWidth = (cfg.size + C.Auras.Margin) * cfg.wrapAfter
+	local holderHeight = (cfg.size + cfg.offset) * cfg.maxWraps
+
 	holder:SetClampedToScreen(true)
-	holder:SetSize(GetHolderWidth(cfg), GetHolderHeight(cfg))
+	holder:SetSize(holderWidth, holderHeight)
 
 	if RegisterStateDriver then
 		RegisterStateDriver(holder, "visibility", "[petbattle] hide; show")
@@ -362,29 +253,50 @@ local function CreateAuraContainer(name, groupKey, filter, cfg, canCancelAura, i
 	local container = CreateFrame("AuraContainer", name.."Container", holder, "CustomAuraContainerTemplate")
 	container:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
 	container:SetEnabled(false)
-	ConfigureAuraContainer(container, cfg)
 
-	local itemEnchantments
+	-- 錨點、位置與增長方向
+	local rowWidth = (cfg.size * cfg.wrapAfter) + (C.Auras.Margin * (cfg.wrapAfter - 1))
+	container:SetFlowLayoutAxis(AnchorUtil.FlowLayoutAxis.Horizontal)
+	container:SetFlowLayoutAnchorPoint("TOPRIGHT")
+	container:SetFlowLayoutGrowthDirection(AnchorUtil.FlowDirection.Left, AnchorUtil.FlowDirection.Down)
+	container:SetFlowLayoutPadding(0, 0, 0, 0)
+	container:SetFlowLayoutMaximumLineSize(rowWidth)
+
 	if includeItemEnchantments then
-		itemEnchantments = AddItemEnchantments(container, cfg)
+		-- 臨時附魔前置，永久附魔隱藏
+		local options = {
+			hidePermanent = true,
+			initializeFrame = CreateAuraButton(cfg, true, false, true),
+		}
+
+		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.MainHand, options)
+		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.OffHand, options)
+		container:AddItemEnchantment(AuraContainerItemEnchantmentSlot.Ranged, options)
+		container:SetItemEnchantmentSortMethod(AuraContainerItemEnchantmentSortMethod.Slot, AuraContainerSortDirection.Normal)
+
+		local layout = GetLayoutOptions(cfg)
+		layout.placement = CustomAuraContainerItemEnchantmentPlacement.BeforeAuraGroups
+		container:SetItemEnchantmentLayout(layout)
 	end
 
-	AddAuraGroup(container, groupKey, filter, cfg, canCancelAura)
+	-- 讓新增光環按指定規則初始化
+	container:AddAuraGroup(groupKey, filter, {
+		maxFrameCount = cfg.maxFrameCount,
+		initializeFrame = CreateAuraButton(cfg, canCancelAura, filter == "HARMFUL"),
+		sortMethod = AuraContainerSortMethod.Default,
+		sortDirection = AuraContainerSortDirection.Normal,
+		layout = GetLayoutOptions(cfg),
+	})
 	container:SetUnit(GetUnitToken())
 	container:SetEnabled(true)
 
 	auraContainers[#auraContainers + 1] = container
-	return holder, container, itemEnchantments
+	return holder, container
 end
 
--- 建立
+-- 建立光環框架
 local function BuildAuraFrames()
-	if builtFrames then
-		return
-	end
-
-	builtFrames = true
-	HideBlizzardAuraFrames()
+	HideBlizzardAura()
 
 	local buffCfg = {
 		offset = 12,
@@ -403,8 +315,8 @@ local function BuildAuraFrames()
 	}
 
 	local buffs
-	buffs, buffContainer, buffItemEnchantments = CreateAuraContainer("AnyonPlayerBuffs", BUFF_GROUP_KEY, "HELPFUL", buffCfg, true, true)
-	UpdateBuffAuraLimit()
+	buffs, buffContainer = CreateAuraContainer("AnyonPlayerBuffs", BUFF_GROUP_KEY, "HELPFUL", buffCfg, true, true)
+	UpdateBuffLimit()
 	buffs:ClearAllPoints()
 	buffs:SetPoint(unpack(C.Auras.BuffPos))
 
@@ -412,25 +324,19 @@ local function BuildAuraFrames()
 	debuffs:ClearAllPoints()
 	debuffs:SetPoint("TOPRIGHT", buffs, "BOTTOMRIGHT", 0, -12)
 
-	UpdateContainerUnits()
+	UpdateUnits()
 end
 
 -- 進入世界時隱藏原生框架，上下載具時切換顯示來源
 local function OnEvent(_, event, unit)
 	if event == "PLAYER_ENTERING_WORLD" then
-		-- 避免暴雪框架重新顯示。
-		BuildAuraFrames()
-		if builtFrames then
-			HideBlizzardAuraFrames()
-			UpdateContainerUnits()
-			UpdateBuffAuraLimit()
-		end
+		HideBlizzardAura()
+		UpdateUnits()
+		UpdateBuffLimit()
 	elseif event == "WEAPON_ENCHANT_CHANGED" or event == "WEAPON_SLOT_CHANGED" then
-		if builtFrames then
-			UpdateBuffAuraLimit()
-		end
-	elseif unit == "player" and builtFrames then
-		UpdateContainerUnits()
+		UpdateBuffLimit()
+	elseif unit == "player" then
+		UpdateUnits()
 	end
 end
 
