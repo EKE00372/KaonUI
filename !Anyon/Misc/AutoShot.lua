@@ -1,36 +1,46 @@
-﻿local addon, ns = ... 
-local C, F, G, L = unpack(ns)
-if not C.AutoShot then return end
-
+local _, ns = ...
+local F = ns[2]
+local M = F.RegisterModule("AutoShot", "AutoShot")
 local CreateFrame, Screenshot = CreateFrame, Screenshot
-local delay = 1	-- 延遲一秒
-local time = 0	-- Reset screenshot delay timer
+local C_Timer_After = C_Timer.After
 
-local function autoShot(self, elapsed)
-	time = time + elapsed
-	
-	if time >= delay then
+local DELAY = 1 -- 延遲一秒，讓成就、死亡或副本完成提示先顯示出來
+local raidDifficulties = {
+	[15] = true, -- Heroic
+	[16] = true, -- Mythic
+}
+
+local pending = false
+
+local function TakeDelayedScreenshot()
+	-- 同一秒內可能連續觸發多個事件，只排一次截圖即可。
+	if pending then return end
+	pending = true
+
+	C_Timer_After(DELAY, function()
+		pending = false
 		Screenshot()
-		time = 0
-		self:SetScript("OnUpdate", nil)
-	end
+	end)
 end
 
-local function OnEvent(self, event, difficultyID)
+local function OnEvent(self, event, ...)
 	if event == "ENCOUNTER_END" then
-		-- only shot heroic and mythic raid
-		if (difficultyID == 15 or difficultyID == 16) then
-			self:SetScript("OnUpdate", autoShot)
+		-- encounterID, encounterName, difficultyID, groupSize, success, encounterUnitStatus
+		local _, _, difficultyID, _, success = ...
+		if success == 1 and raidDifficulties[difficultyID] then
+			TakeDelayedScreenshot()
 		end
 	else
-		self:SetScript("OnUpdate", autoShot)
+		TakeDelayedScreenshot()
 	end
 end
 
-local frame = CreateFrame("Frame")
+function M:OnEnable()
+	local frame = CreateFrame("Frame")
 	frame:RegisterEvent("ACHIEVEMENT_EARNED")
 	frame:RegisterEvent("PLAYER_DEAD")
 	frame:RegisterEvent("PLAYER_LEVEL_UP")
-	frame:RegisterEvent("CHALLENGE_MODE_COMPLETED") 
-	frame:RegisterEvent("ENCOUNTER_END") 
+	frame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+	frame:RegisterEvent("ENCOUNTER_END")
 	frame:SetScript("OnEvent", OnEvent)
+end
