@@ -1,367 +1,348 @@
+local _, ns = ...
+local F = ns[2]
+local M = F.RegisterModule("CompassCastbar", "CompassCastbar")
 
--- rCompassCastbar
--- zork, 2018
+-- rCompassCastbar by zork
 
------------------------------
--- Variables
------------------------------
+local ipairs, pairs, select, unpack = ipairs, pairs, select, unpack
+local pi = math.pi
 
---addon tables
-local addon, ns = ... 
-local C, F, G, L = unpack(ns)
-if not C.CompassCastbar then return end
+local C_Spell_GetSpellCooldown = C_Spell.GetSpellCooldown
+local C_Spell_GetSpellCooldownDuration = C_Spell.GetSpellCooldownDuration
+local CreateFrame, GetCursorPosition = CreateFrame, GetCursorPosition
+local UnitCastingInfo, UnitChannelInfo = UnitCastingInfo, UnitChannelInfo
+local UnitCastingDuration, UnitChannelDuration = UnitCastingDuration, UnitChannelDuration
+local UnitEmpoweredChannelDuration = UnitEmpoweredChannelDuration
 
-local mediaPath = "Interface\\AddOns\\!Anyon\\Media\\"
-local UnitCastingInfo,UnitChannelInfo = UnitCastingInfo,UnitChannelInfo
-local GetTime,GetCursorPosition,math = GetTime,GetCursorPosition,math
-local uiScale = 1
+local leftCurve, rightCurve, sparkCurve
 
------------------------------
--- Config
------------------------------
+------------
+-- config --
+------------
 
---cfg
-local ringCfg = {}
+local TEXTURE_PATH = "Interface\\AddOns\\!Anyon\\Media\\rCompassCastbar\\"
+local RING_SIZE = 512
+local GCD_SPELL_ID = 61304
 
---overall scale
-local overallScale = 1
+local CAST_EVENTS = {
+	"UNIT_SPELLCAST_START",
+	"UNIT_SPELLCAST_SUCCEEDED",
+	"UNIT_SPELLCAST_DELAYED",
+	"UNIT_SPELLCAST_CHANNEL_START",
+	"UNIT_SPELLCAST_CHANNEL_UPDATE",
+	"UNIT_SPELLCAST_EMPOWER_START",
+	"UNIT_SPELLCAST_EMPOWER_UPDATE",
+}
 
---player settings
-ringCfg["player"] = {
-	enabled	= true,
-	size = { 512,512 },
-	scale = 0.34 * overallScale,
-	--comment this in if you want the position to be fixed, otherwise position at cursor
-	--point	 = {"CENTER",0,0},
-	background = {
+-- 各事件的公開 castBarID 位置
+local STOP_EVENTS = {
+	UNIT_SPELLCAST_FAILED = 4,
+	UNIT_SPELLCAST_STOP = 4,
+	UNIT_SPELLCAST_INTERRUPTED = 5,
+	UNIT_SPELLCAST_CHANNEL_STOP = 5,
+	UNIT_SPELLCAST_EMPOWER_STOP = 6,
+}
+
+-- 可加 point = {"CENTER", 0, 0} 固定位置；未設定時跟隨游標
+local RING_CONFIG = {
+	player = {
 		enabled = true,
-		color = {0.4,0.3,0,1}, --red,green,blue,alpha
-		blendmode = "ADD", --ADD or BLEND
-		texture = mediaPath.."compass-rose",
+		scale = 0.34,
+		background = {
+			enabled = true,
+			color = {0.4, 0.3, 0, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose.tga",
+		},
+		ring = {
+			color = {1, 0.8, 0, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-ring-bright.tga",
+		},
+		spark = {
+			enabled = true,
+			color = {1, 1, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-spark.tga",
+		},
 	},
-	ring = {
-		color = {1,0.8,0,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-ring-bright",
-	},
-	spark = {
+	target = {
 		enabled = true,
-		color = {1,1,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-spark",
+		scale = 0.2,
+		background = {
+			enabled = false,
+			color = {0.4, 0.3, 0, 0.8},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-bright.tga",
+		},
+		ring = {
+			color = {1, 0, 0, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-ring-bright.tga",
+		},
+		spark = {
+			enabled = true,
+			color = {1, 1, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-spark.tga",
+		},
+	},
+	gcd = {
+		enabled = true,
+		scale = 0.26,
+		background = {
+			enabled = false,
+			color = {0.5, 0.4, 0, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose.tga",
+		},
+		ring = {
+			color = {0.5, 0.5, 0.5, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-ring-bright.tga",
+		},
+		spark = {
+			enabled = true,
+			color = {1, 1, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-spark.tga",
+		},
+	},
+	focus = {
+		enabled = true,
+		scale = 0.15,
+		background = {
+			enabled = false,
+			color = {0.4, 0.3, 0, 0.8},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-bright.tga",
+		},
+		ring = {
+			color = {0, 0.5, 1, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-ring-bright.tga",
+		},
+		spark = {
+			enabled = true,
+			color = {1, 1, 1},
+			blendMode = "ADD",
+			texture = TEXTURE_PATH.."compass-rose-spark.tga",
+		},
 	},
 }
 
---target settings
-ringCfg["target"] = {
-	enabled	= true,
-	size = {512,512},
-	scale = 0.2 * overallScale,
-	--comment this in if you want the position to be fixed, otherwise position at cursor
-	--point	= {"CENTER",0,0},
-	background = {
-		enabled = false,
-		color = {0.4,0.3,0,0.8}, --red,green,blue,alpha
-		blendmode = "ADD", --ADD or BLEND
-		texture = mediaPath.."compass-rose-bright",
-	},
-	ring = {
-		color = {1,0,0,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-ring-bright",
-	},
-	spark = {
-		enabled = true,
-		color = {1,1,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-spark",
-	},
-}
-	
---gcd settings
-ringCfg["gcd"] = {
-	enabled	= true,
-	size = {512,512},
-	scale  = 0.26 * overallScale,
-	background = {
-		enabled = false,
-		color = {0.5,0.4,0,1}, --red,green,blue,alpha
-		blendmode = "ADD", --ADD or BLEND
-		texture = mediaPath.."compass-rose",
-	},
-	ring = {
-		color = {0.5,0.5,0.5,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-ring-bright",
-	},
-	spark = {
-		enabled = true,
-		color = {1,1,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-spark",
-	},
-}
+--------------
+-- Function --
+--------------
 
---focus settings
-ringCfg["focus"] = {
-	enabled = true,
-	size = {512,512},
-	scale = 0.15 * overallScale,
-	--comment this in if you want the position to be fixed, otherwise position at cursor
-	--point					 = {"CENTER",0,0},
-	background = {
-		enabled = false,
-		color = {0.4,0.3,0,0.8}, --red,green,blue,alpha
-		blendmode = "ADD", --ADD or BLEND
-		texture = mediaPath.."compass-rose-bright",
-	},
-	ring = {
-		color = {0,0.5,1,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-ring-bright",
-	},
-	spark = {
-		enabled = true,
-		color = {1,1,1},
-		blendmode = "ADD",
-		texture = mediaPath.."compass-rose-spark",
-	},
-}
-
------------------------------
--- Functions
------------------------------
-
---GetUiScale func
-local function GetUiScale()
-	uiScale = UIParent:GetEffectiveScale()
+local function OnCooldownDone(frame)
+	frame:SetScript("OnUpdate", nil)
+	frame.duration = nil
+	frame.evaluatePercent = nil
+	frame.castBarID = nil
+	frame:Hide()
 end
 
---Disable func
-local function Disable(self)
-	self:SetScript("OnUpdate",nil)
-	self.update, self.isCasting, self.isEnabled = false,false,false
-	self.spellName, self.spellText, self.spellTexture, self.startTime, self.endTime = nil,nil,nil,nil,nil,nil
-	self.current, self.duration, self.elapsed, self.percent = 0,0,0,0
-	self:Hide()
-	--self:SetAlpha(0)
+local function DisableRing(frame)
+	frame:Clear()
+	OnCooldownDone(frame)
 end
 
---OnUpdate func
-local function OnUpdate(self,elapsed)
-	self.elapsed = self.elapsed + elapsed
-	if self.update and self.unit ~= "gcd" then
-		self.spellName, self.spellText, self.spellTexture, self.startTime, self.endTime = UnitCastingInfo(self.unit)
-		if not self.spellName then
-			self.spellName, self.spellText, self.spellTexture, self.startTime, self.endTime = UnitChannelInfo(self.unit)
-		end
-		if not self.spellName then
-			Disable(self)
-			return
-		end
-		self.current = GetTime()-self.startTime/1e3
-		self.duration = (self.endTime-self.startTime)/1e3
-		self.elapsed = 0
-		self.update = false
+local function UpdateCursorPosition(frame)
+	local x, y = GetCursorPosition()
+	local uiScale = UIParent:GetEffectiveScale()
+
+	frame:ClearAllPoints()
+	frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / uiScale / frame.ringScale - frame.ringWidth / 2, y / uiScale / frame.ringScale - frame.ringHeight / 2)
+end
+
+local function OnUpdate(frame)
+	if frame.followCursor then
+		UpdateCursorPosition(frame)
 	end
-	if self.update and self.unit == "gcd" then
-		--gcd spellid http://www.wowhead.com/spell=61304/global-cooldown
-		self.startTime, self.duration = GetSpellCooldown(61304)
-		if self.duration == 0 then
-			Disable(self)
-			return
-		end
-		self.current = GetTime()-self.startTime
-		self.elapsed = 0
-		self.update = false
+
+	-- 原生 curve 處理分段角度；secret value 直接交給 Texture:SetRotation
+	local duration, evaluatePercent = frame.duration, frame.evaluatePercent
+	frame.leftRingTexture:SetRotation(evaluatePercent(duration, leftCurve))
+	frame.rightRingTexture:SetRotation(evaluatePercent(duration, rightCurve))
+	if frame.leftRingSpark then
+		local angle = evaluatePercent(duration, sparkCurve)
+		frame.leftRingSpark:SetRotation(angle)
+		frame.rightRingSpark:SetRotation(angle)
 	end
-	--if the calculated duration is overdue kill the OnUpdate
-	if self.current+self.elapsed-self.duration > 0 then
-		Disable(self)
+end
+
+local function StartRing(frame, duration, castBarID, reverse)
+	frame.duration = duration
+	frame.evaluatePercent = reverse and duration.EvaluateRemainingPercent or duration.EvaluateElapsedPercent
+	frame.castBarID = castBarID
+	OnUpdate(frame)
+	frame:SetScript("OnUpdate", OnUpdate)
+	frame:Show()
+	frame:SetCooldownFromDurationObject(duration)
+end
+
+local function RefreshCast(frame)
+	-- isTradeskill 為 NeverSecret；false 也代表有施法，nil 才表示沒有
+	local _, _, _, _, _, isTradeskill, _, _, _, castBarID = UnitCastingInfo(frame.unit)
+	if isTradeskill ~= nil then
+		StartRing(frame, UnitCastingDuration(frame.unit), castBarID)
 		return
 	end
-	if self.castbarAtCursor then
-		self.x, self.y = GetCursorPosition()
-		self.x = (self.x/uiScale/self.scale)-self.w/2
-		self.y = (self.y/uiScale/self.scale)-self.h/2
-		self:SetPoint("BOTTOMLEFT",self.x,self.y)
-	end
-	self.percent = math.min(self.current+self.elapsed,self.duration)/self.duration
-	if self.percent > 0.5 then
-		self.leftRingTexture:SetRotation(math.rad(self.leftRingTexture.baseDeg-180*(self.percent*2-1)))
-		self.rightRingTexture:SetRotation(math.rad(self.rightRingTexture.baseDeg-180))
-	else
-		self.leftRingTexture:SetRotation(math.rad(self.leftRingTexture.baseDeg-0))
-		self.rightRingTexture:SetRotation(math.rad(self.rightRingTexture.baseDeg-180*(self.percent*2)))
-	end
-	if self.rightRingSpark then
-		self.rightRingSpark:SetRotation(math.rad(self.rightRingSpark.baseDeg-180*(self.percent*2)))
-	end
-	if self.leftRingSpark then
-		self.leftRingSpark:SetRotation(math.rad(self.leftRingSpark.baseDeg-180*(self.percent*2-1)))
-	end
-end
 
---Enable func
-local function Enable(self)
-	if self.isEnabled then return end
-	self:Show()
-	--self:SetAlpha(1)
-	self:SetScript("OnUpdate",OnUpdate)
-	self.isEnabled = true
-end
-
---OnEvent func
-local function OnEvent(self,event)
-	if self.unit ~= "gcd" and (event == "UNIT_SPELLCAST_CHANNEL_STOP" or event == "UNIT_SPELLCAST_STOP") then
-		Disable(self)
+	local _, _, _, _, _, isChannelTradeskill, _, _, isEmpowered, _, channelBarID = UnitChannelInfo(frame.unit)
+	if isChannelTradeskill ~= nil then
+		if isEmpowered then
+			StartRing(frame, UnitEmpoweredChannelDuration(frame.unit, true), channelBarID)
+		else
+			StartRing(frame, UnitChannelDuration(frame.unit), channelBarID, true)
+		end
 		return
 	end
-	--update on all other events
-	self.update = true
-	Enable(self)
+
+	DisableRing(frame)
 end
 
---CreateCompassCastbar func
-local function CreateCompassCastbar(unit,cfg)
-	if not cfg.enabled then return end
-	--frame
-	local f = CreateFrame("Frame",nil,UIParent)
-	f:SetSize(unpack(cfg.size))
-	f:SetScale(cfg.scale)
-	f.scale = f:GetScale()
-	f.w, f.h = f:GetSize()
-	f:SetFrameStrata("DIALOG")
-	--unit
-	f.unit = unit
-	--position
-	if cfg.point then
-		f.castbarAtCursor = false
-		f:SetPoint(unpack(cfg.point))
+local function RefreshGCD(frame)
+	local cooldownInfo = C_Spell_GetSpellCooldown(GCD_SPELL_ID)
+	if cooldownInfo and cooldownInfo.isActive then
+		StartRing(frame, C_Spell_GetSpellCooldownDuration(GCD_SPELL_ID, false))
 	else
-		f.castbarAtCursor = true
-		f:SetPoint("BOTTOMLEFT",0,0)
-		f:SetClampedToScreen(1)
+		DisableRing(frame)
 	end
-	--frame background
-	if cfg.background and cfg.background.enabled then
-		local t = f:CreateTexture(nil, "BACKGROUND", nil, -8)
-		t:SetTexture(cfg.background.texture)
-		t:SetAllPoints()
-		t:SetVertexColor(unpack(cfg.background.color))
-		t:SetBlendMode(cfg.background.blendmode)
-		f.bg = t
+end
+
+local function OnEvent(frame, event, ...)
+	if frame.unit == "gcd" then
+		RefreshGCD(frame)
+		return
 	end
-	--left ring scroll frame
-	local sf1 = CreateFrame("ScrollFrame",nil,f)
-	sf1:SetSize(f.w/2,f.h)
-	sf1:SetPoint("LEFT")
-	--left ring scroll child
-	local sc1 = CreateFrame("Frame")
-	sf1:SetScrollChild(sc1)
-	sc1:SetSize(f.w,f.h)
-	--left ring texture
-	local rt1 = sc1:CreateTexture(nil,"BACKGROUND",nil,-6)
-	rt1:SetTexture(cfg.ring.texture)
-	rt1:SetSize(f.w,f.h)
-	rt1:SetPoint("CENTER")
-	rt1:SetVertexColor(unpack(cfg.ring.color))
-	rt1:SetBlendMode(cfg.ring.blendmode)
-	rt1.baseDeg = -180
-	f.leftRingTexture = rt1
-	--left ring spark
-	if cfg.spark and cfg.spark.enabled then
-		local rs1 = sc1:CreateTexture(nil,"BACKGROUND",nil,-5)
-		rs1:SetTexture(cfg.spark.texture)
-		rs1:SetSize(f.w,f.h)
-		rs1:SetPoint("CENTER")
-		rs1:SetVertexColor(unpack(cfg.spark.color))
-		rs1:SetBlendMode(cfg.spark.blendmode)
-		rs1.baseDeg = -180
-		f.leftRingSpark = rs1
+
+	local stopIndex = STOP_EVENTS[event]
+	if stopIndex then
+		local castBarID = select(stopIndex, ...)
+		if castBarID and castBarID == frame.castBarID then
+			DisableRing(frame)
+			return
+		end
 	end
-	--right ring scroll frame
-	local sf2 = CreateFrame("ScrollFrame",nil,f)
-	sf2:SetSize(f.w/2,f.h)
-	sf2:SetPoint("RIGHT")
-	--right ring scroll child
-	local sc2 = CreateFrame("Frame")
-	sf2:SetScrollChild(sc2)
-	sf2:SetHorizontalScroll(f.w/2)
-	sc2:SetSize(f.w,f.h)
-	--right ring texture
-	local rt2 = sc2:CreateTexture(nil,"BACKGROUND",nil,-6)
-	rt2:SetTexture(cfg.ring.texture)
-	rt2:SetSize(f.w,f.h)
-	rt2:SetPoint("CENTER")
-	rt2:SetVertexColor(unpack(cfg.ring.color))
-	rt2:SetBlendMode(cfg.ring.blendmode)
-	rt2.baseDeg = 0
-	f.rightRingTexture = rt2
-	--right ring spark
-	if cfg.spark and cfg.spark.enabled then
-		local rs2 = sc2:CreateTexture(nil,"BACKGROUND",nil,-5)
-		rs2:SetTexture(cfg.spark.texture)
-		rs2:SetSize(f.w,f.h)
-		rs2:SetPoint("CENTER")
-		rs2:SetVertexColor(unpack(cfg.spark.color))
-		rs2:SetBlendMode(cfg.spark.blendmode)
-		rs2.baseDeg = 0
-		f.rightRingSpark = rs2
+
+	RefreshCast(frame)
+end
+
+local function CreateTexture(parent, config, width, height, layer, subLevel)
+	local texture = parent:CreateTexture(nil, layer, nil, subLevel)
+	texture:SetTexture(config.texture)
+	texture:SetSize(width, height)
+	texture:SetPoint("CENTER")
+	texture:SetVertexColor(unpack(config.color))
+	texture:SetBlendMode(config.blendMode)
+	return texture
+end
+
+local function CreateRingHalf(parent, config, side)
+	local scrollFrame = CreateFrame("ScrollFrame", nil, parent)
+	scrollFrame:SetSize(parent.ringWidth / 2, parent.ringHeight)
+	scrollFrame:SetPoint(side)
+
+	local child = CreateFrame("Frame", nil, scrollFrame)
+	child:SetSize(parent.ringWidth, parent.ringHeight)
+	scrollFrame:SetScrollChild(child)
+
+	if side == "RIGHT" then
+		scrollFrame:SetHorizontalScroll(parent.ringWidth / 2)
 	end
-	--cast events != gcd
-	if unit ~= "gcd" then
-		f:RegisterUnitEvent("UNIT_SPELLCAST_START", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_STOP", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_DELAYED", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_UPDATE", unit)
-		f:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", unit)
+
+	local ring = CreateTexture(child, config.ring, parent.ringWidth, parent.ringHeight, "BACKGROUND", -6)
+
+	if config.spark and config.spark.enabled then
+		local spark = CreateTexture(child, config.spark, parent.ringWidth, parent.ringHeight, "BACKGROUND", -5)
+		return ring, spark
 	end
-	--pet events
-	if unit == "pet" then
-		f:RegisterUnitEvent("UNIT_PET","player")
+
+	return ring
+end
+
+local function CreateCompassCastbar(unit, config)
+	local frame = CreateFrame("Cooldown", nil, UIParent)
+	frame.noCooldownCount = true
+	frame:SetDrawSwipe(false)
+	frame:SetDrawEdge(false)
+	frame:SetDrawBling(false)
+	frame:SetHideCountdownNumbers(true)
+	frame:SetSize(RING_SIZE, RING_SIZE)
+	frame:SetScale(config.scale)
+	frame:SetFrameStrata("DIALOG")
+	frame:SetClampedToScreen(true)
+	frame.unit = unit
+	frame.ringScale = config.scale
+	frame.ringWidth, frame.ringHeight = frame:GetSize()
+	frame.followCursor = not config.point
+
+	if config.point then
+		frame:SetPoint(unpack(config.point))
+	else
+		frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
 	end
-	--focus events
-	if unit == "focus" then
-		f:RegisterEvent("PLAYER_FOCUS_CHANGED")
+
+	if config.background and config.background.enabled then
+		local background = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+		background:SetAllPoints()
+		background:SetTexture(config.background.texture)
+		background:SetVertexColor(unpack(config.background.color))
+		background:SetBlendMode(config.background.blendMode)
 	end
-	--target events
-	if unit == "target" then
-		f:RegisterEvent("PLAYER_TARGET_CHANGED")
-	end
-	--gcd events
+
+	frame.leftRingTexture, frame.leftRingSpark = CreateRingHalf(frame, config, "LEFT")
+	frame.rightRingTexture, frame.rightRingSpark = CreateRingHalf(frame, config, "RIGHT")
+
+	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 	if unit == "gcd" then
-		--f:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-		--f:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
-		--f:RegisterEvent("SPELLS_CHANGED")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_UPDATE", "player")
-		f:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
+		frame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
+		frame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+		frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+		frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
+	else
+		for _, event in ipairs(CAST_EVENTS) do
+			frame:RegisterUnitEvent(event, unit)
+		end
+		for event in pairs(STOP_EVENTS) do
+			frame:RegisterUnitEvent(event, unit)
+		end
+		if unit == "target" then
+			frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+		elseif unit == "focus" then
+			frame:RegisterEvent("PLAYER_FOCUS_CHANGED")
+		end
 	end
-	Disable(f)
-	f:SetScript("OnEvent",OnEvent)
+
+	frame:SetScript("OnEvent", OnEvent)
+	frame:SetScript("OnCooldownDone", OnCooldownDone)
+	OnEvent(frame, "PLAYER_ENTERING_WORLD")
 end
 
------------------------------
--- Init
------------------------------
+function M:OnEnable()
+	-- 前半圈只轉右側，後半圈只轉左側；spark 持續轉一圈
+	leftCurve = C_CurveUtil.CreateCurve()
+	leftCurve:SetType(Enum.LuaCurveType.Linear)
+	leftCurve:AddPoint(0, -pi)
+	leftCurve:AddPoint(0.5, -pi)
+	leftCurve:AddPoint(1, -2 * pi)
 
-for unit, cfg in next, ringCfg do
-	CreateCompassCastbar(unit,cfg)
+	rightCurve = C_CurveUtil.CreateCurve()
+	rightCurve:SetType(Enum.LuaCurveType.Linear)
+	rightCurve:AddPoint(0, 0)
+	rightCurve:AddPoint(0.5, -pi)
+	rightCurve:AddPoint(1, -pi)
+
+	sparkCurve = C_CurveUtil.CreateCurve()
+	sparkCurve:SetType(Enum.LuaCurveType.Linear)
+	sparkCurve:AddPoint(0, 0)
+	sparkCurve:AddPoint(1, -2 * pi)
+
+	for unit, config in pairs(RING_CONFIG) do
+		if config.enabled then
+			CreateCompassCastbar(unit, config)
+		end
+	end
 end
-
---check for ui scale changes
-local f = CreateFrame("Frame")
-f:RegisterEvent("LOADING_SCREEN_DISABLED")
---f:RegisterEvent("UI_SCALE_CHANGED")
---f:RegisterEvent("PLAYER_LOGIN")
-f:SetScript("OnEvent",GetUiScale)
