@@ -12,28 +12,24 @@ local COLORS = {
 	unusable = { 0.4, 0.4, 0.4, 1, desaturate = false },
 }
 
-local UPDATE_DELAY = 1 / 30
-
-local iconStates, registered
+-- 分開保存可用性與已套用顏色
+local usableStates, iconStates, registered
 
 local function ApplyIconColor(icon, state)
-	local color = COLORS[state] or COLORS.normal
-	if not icon then return end
+	local color = COLORS[state]
 
 	icon:SetVertexColor(color[1], color[2], color[3], color[4])
 	icon:SetDesaturated(color.desaturate)
 end
 
 local function ApplyHotKeyColor(hotkey, state)
-	local color = COLORS[state] or COLORS.normal
-	if not hotkey then return end
+	local color = COLORS[state]
 
 	hotkey:SetVertexColor(color[1], color[2], color[3])
 end
 
-local function GetActionState(slot)
+local function GetActionState(slot, isUsable, notEnoughMana)
 	local actionType, id = GetActionInfo(slot)
-	local isUsable, notEnoughMana
 
 	-- 以 # 開頭的巨集優先用綁定法術判斷資源
 	if actionType == "macro" then
@@ -46,13 +42,13 @@ local function GetActionState(slot)
 		end
 	end
 
-	if isUsable == nil then
+	if isUsable == nil or notEnoughMana == nil then
 		isUsable, notEnoughMana = C_ActionBar.IsUsableAction(slot)
 	end
 
 	local outOfRange = C_ActionBar.IsActionInRange(slot) == false
 	if isUsable then
-		return outOfRange and "oor" or "normal", outOfRange
+		return "normal", outOfRange
 	end
 
 	return notEnoughMana and "oom" or "unusable", outOfRange
@@ -67,20 +63,21 @@ local function GetPetActionState(index)
 		isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID)
 	else
 		isUsable = GetPetActionSlotUsable(index)
-		notEnoughMana = false
 	end
 
 	if isUsable then
-		return outOfRange and "oor" or "normal", outOfRange
+		return "normal", outOfRange
 	end
 
 	return notEnoughMana and "oom" or "unusable", outOfRange
 end
 
-local function ActionButton_Update(button)
-	if not button or not button.action or not button.icon then return end
+local function ActionButton_Update(button, _, isUsable, notEnoughMana)
+	if not button.action then return end
 
-	local iconState, outOfRange = GetActionState(button.action)
+	local usableState, outOfRange = GetActionState(button.action, isUsable, notEnoughMana)
+	usableStates[button.icon] = usableState
+	local iconState = outOfRange and "oor" or usableState
 	iconStates[button.icon] = iconState
 	ApplyIconColor(button.icon, iconState)
 
@@ -92,16 +89,9 @@ local function ActionButton_UpdateRange(button, checksRange, inRange)
 
 	local outOfRange = checksRange and not inRange
 	local icon = button.icon
-	local iconState = iconStates[icon]
-	local newIconState
+	local newIconState = outOfRange and "oor" or usableStates[icon]
 
-	if iconState == "normal" and outOfRange then
-		newIconState = "oor"
-	elseif iconState == "oor" and not outOfRange then
-		newIconState = "normal"
-	end
-
-	if newIconState then
+	if newIconState and iconStates[icon] ~= newIconState then
 		iconStates[icon] = newIconState
 		ApplyIconColor(icon, newIconState)
 	end
@@ -111,31 +101,36 @@ local function ActionButton_UpdateRange(button, checksRange, inRange)
 end
 
 local function ActionButton_Register(button)
-	if not button or registered[button] then return end
+	if registered[button] then return end
 
 	hooksecurefunc(button, "UpdateUsable", ActionButton_Update)
 	registered[button] = true
 	ActionButton_Update(button)
 end
 
-local function PetBar_Update(bar)
-	if not bar or not bar.actionButtons or not PetHasActionBar() then return end
+local function PetBar_Update(bar, force)
+	if not PetHasActionBar() then return end
 
 	for index, button in pairs(bar.actionButtons) do
 		local icon = button.icon
-		if icon and icon:IsVisible() then
-			local iconState, outOfRange = GetPetActionState(index)
-			iconStates[icon] = iconState
-			ApplyIconColor(icon, iconState)
+		local usableState, outOfRange = GetPetActionState(index)
+		usableStates[icon] = usableState
+		if icon:IsVisible() then
+			local iconState = outOfRange and "oor" or usableState
+			-- 原生刷新後補染
+			if force or iconStates[icon] ~= iconState then
+				iconStates[icon] = iconState
+				ApplyIconColor(icon, iconState)
+			end
 			ApplyHotKeyColor(button.HotKey, outOfRange and "oor" or "normal")
+		else
+			iconStates[icon] = nil
 		end
 	end
 end
 
 function M:OnEnable()
-	if not ActionBarButtonRangeCheckFrame or not ActionBarButtonEventsFrame or not ActionButton_UpdateRangeIndicator then return end
-	if not C_ActionBar or not C_ActionBar.IsUsableAction or not C_ActionBar.IsActionInRange then return end
-
+	usableStates = {}
 	iconStates = {}
 	registered = {}
 
@@ -147,26 +142,23 @@ function M:OnEnable()
 	-- ACTION_RANGE_CHECK_UPDATE 最後會走到這個共享函數
 	hooksecurefunc("ActionButton_UpdateRangeIndicator", ActionButton_UpdateRange)
 
-	if PetActionBar and PetActionBar.actionButtons then
-		for _, button in pairs(PetActionBar.actionButtons) do
-			registered[button] = true
-		end
-
-		hooksecurefunc(PetActionBar, "Update", PetBar_Update)
-
-		local eventFrame = CreateFrame("Frame")
-		eventFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "pet")
-		eventFrame:SetScript("OnEvent", function()
-			PetBar_Update(PetActionBar)
-		end)
+	for _, button in pairs(PetActionBar.actionButtons) do
+		registered[button] = true
 	end
 
-	-- 初始化後更新一次
-	C_Timer.After(UPDATE_DELAY, function()
-		ActionBarButtonEventsFrame:ForEachFrame(ActionButton_Update)
+	hooksecurefunc(PetActionBar, "Update", function(bar)
+		PetBar_Update(bar, true)
+	end)
 
-		if PetActionBar then
-			PetBar_Update(PetActionBar)
-		end
+	local eventFrame = CreateFrame("Frame")
+	eventFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "pet")
+	eventFrame:SetScript("OnEvent", function()
+		PetBar_Update(PetActionBar)
+	end)
+
+	-- 初始化後更新一次
+	C_Timer.After(1 / 30, function()
+		ActionBarButtonEventsFrame:ForEachFrame(ActionButton_Update)
+		PetBar_Update(PetActionBar, true)
 	end)
 end
