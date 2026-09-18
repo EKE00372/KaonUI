@@ -35,20 +35,11 @@ local formatter
 -----------------    [[ Utilities ]]    ---------------
 --===================================================--
 
-local createColor = setmetatable({}, {
-	__mode = "v",
-	__call = function(self, hex)
-		if type(hex) ~= "string" or (#hex ~= 8 and #hex ~= 6) then return nil end
+local function createColor(hex)
+	if type(hex) ~= "string" or (#hex ~= 8 and #hex ~= 6) then return nil end
 
-		local color = self[hex]
-		if not color then
-			color = #hex == 8 and CreateColorFromRGBAHexString(hex) or CreateColorFromHexString(hex)
-			self[hex] = color
-		end
-
-		return color
-	end,
-})
+	return #hex == 8 and CreateColorFromRGBAHexString(hex) or CreateColorFromHexString(hex)
+end
 
 local function thresholdComparer(a, b)
 	return a.threshold < b.threshold
@@ -59,7 +50,7 @@ end
 --==================================================--
 
 local function getFormatBreakpoints()
-	local roundingMode = Enum.NumericRuleFormatRounding[ROUNDING_MODE] or Enum.NumericRuleFormatRounding.Nearest
+	local roundingMode = Enum.NumericRuleFormatRounding[ROUNDING_MODE]
 	local points = {}
 
 	if TENTHS_THRESHOLD > 0 then
@@ -164,8 +155,6 @@ local function createBreakpoints(colors, formats)
 			threshold = f.threshold
 			state.step = f.step
 			state.rounding = f.rounding
-			state.min = f.min
-			state.max = f.max
 			state.format = f.format
 			state.components = f.components
 			j = j + 1
@@ -175,8 +164,6 @@ local function createBreakpoints(colors, formats)
 			threshold = threshold,
 			step = state.step,
 			rounding = state.rounding,
-			min = state.min,
-			max = state.max,
 			format = state.color and state.color:WrapTextInColorCode(state.format) or state.format,
 			components = state.components,
 		})
@@ -185,27 +172,23 @@ local function createBreakpoints(colors, formats)
 	return breakpoints
 end
 
-local function createFormatter()
-	local formatter = C_StringUtil.CreateNumericRuleFormatter()
-	formatter:SetBreakpoints(createBreakpoints(getColorBreakpoints(), getFormatBreakpoints()))
-
-	return formatter
-end
-
 --===================================================--
 -----------------    [[ Module ]]    ------------------
 --===================================================--
 
 local function getFormatter()
 	if not formatter then
-		formatter = createFormatter()
+		formatter = C_StringUtil.CreateNumericRuleFormatter()
+		formatter:SetBreakpoints(createBreakpoints(getColorBreakpoints(), getFormatBreakpoints()))
 	end
 
 	return formatter
 end
 
-local function styleCooldown(cooldown)
+local function onCooldownStart(cooldown)
+	if cooldown.noCooldownCount then return end
 	if cooldown.tullaCTCStyled then return end
+	if cooldown:IsForbidden() then return end
 
 	local text = cooldown:GetCountdownFontString()
 
@@ -221,41 +204,25 @@ local function styleCooldown(cooldown)
 	cooldown.tullaCTCStyled = true
 end
 
-local function raiseCooldownText(cooldown)
-	if cooldown.tullaCTCTextRaised then return end
-	if InCombatLockdown() then return end
-
-	local parent = cooldown:GetParent()
-	if parent and parent.TextOverlayContainer then
-		local container = CreateFrame("Frame", nil, cooldown)
-		container:SetAllPoints(cooldown)
-		container:SetFrameLevel(777)
-		cooldown:GetCountdownFontString():SetParent(container)
-		cooldown.tullaCTCTextRaised = true
-	end
-end
-
-local function onCooldownStart(cooldown)
-	if cooldown.noCooldownCount then return end
-	if cooldown:IsForbidden() then return end
-
-	raiseCooldownText(cooldown)
-	styleCooldown(cooldown)
-end
-
 -- 正在恢復充能時，顯示充能倒數
 local function updateChargeCountdown(normalCooldown)
 	local state = chargeCooldowns[normalCooldown]
 	if not state then return end
 
 	local chargeCooldown = state.cooldown
-	if normalCooldown:IsForbidden() or chargeCooldown:IsForbidden() then return end
-
 	local showNumbers = CVarCallbackRegistry:GetCVarValueBool("countdownForCooldowns") == true
 	local showCharge = state.recharging and not chargeCooldown.noCooldownCount
 	local showNormal = not showCharge and not normalCooldown.noCooldownCount
-	normalCooldown:SetHideCountdownNumbers(not showNumbers or not showNormal)
-	chargeCooldown:SetHideCountdownNumbers(not showNumbers or not showCharge)
+	local hideNormal = not showNumbers or not showNormal
+	local hideCharge = not showNumbers or not showCharge
+	if normalCooldown.tullaCTCHideNumbers ~= hideNormal then
+		normalCooldown:SetHideCountdownNumbers(hideNormal)
+		normalCooldown.tullaCTCHideNumbers = hideNormal
+	end
+	if chargeCooldown.tullaCTCHideNumbers ~= hideCharge then
+		chargeCooldown:SetHideCountdownNumbers(hideCharge)
+		chargeCooldown.tullaCTCHideNumbers = hideCharge
+	end
 end
 
 local function onApplyCooldown(normalCooldown, _, chargeCooldown, chargeInfo, _, lossOfControlInfo)
@@ -288,7 +255,10 @@ function M:OnEnable()
 	hooksecurefunc("ActionButton_ApplyCooldown", onApplyCooldown)
 
 	hooksecurefunc("ActionButton_UpdateCooldownNumberHidden", function(button)
-		updateChargeCountdown(button.cooldown)
+		-- 原生剛覆寫普通冷卻的顯隱，必須重新套用。
+		local cooldown = button.cooldown
+		cooldown.tullaCTCHideNumbers = nil
+		updateChargeCountdown(cooldown)
 	end)
 
 	CVarCallbackRegistry:RegisterCallback("countdownForCooldowns", function()
@@ -302,5 +272,6 @@ function M:OnEnable()
 
 		cooldown.noCooldownCount = true
 		cooldown:SetHideCountdownNumbers(true)
+		cooldown.tullaCTCHideNumbers = true
 	end)
 end
