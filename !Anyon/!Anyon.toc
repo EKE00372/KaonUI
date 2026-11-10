@@ -12,6 +12,7 @@ GUI.lua
 
 UIScale.lua
 SetUI.lua
+SlashCMD.lua
 
 Interface\Interface.xml
 Actionbar\Actionbar.xml
