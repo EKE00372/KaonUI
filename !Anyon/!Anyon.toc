@@ -8,6 +8,7 @@
 Init.lua
 Config.lua
 
+UIScale.lua
 
 Interface\Interface.xml
 Actionbar\Actionbar.xml
