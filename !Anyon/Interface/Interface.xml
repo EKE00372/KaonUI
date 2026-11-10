@@ -4,6 +4,7 @@
 	<Script file="Interface\ColorfulMicroMenu.lua"/>
 	<Script file="Interface\FriendList.lua"/>
 	<Script file="Tooltip\TooltipSeparator.lua"/>
+	<Script file="Tooltip\TooltipInspect.lua"/>
 	<Script file="Tooltip\TooltipItemInfo.lua"/>
 	<Script file="Interface\BagItemInfo.lua"/>
 	<Script file="Interface\CharacterStats.lua"/>
