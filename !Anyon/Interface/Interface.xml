@@ -6,4 +6,5 @@
 	<Script file="Interface\BagItemInfo.lua"/>
 	<Script file="Interface\CharacterStats.lua"/>
 	<Script file="Interface\ProfessionTabs.lua"/>
+	<Script file="Interface\MacroFrame.lua"/>
 </Ui>
