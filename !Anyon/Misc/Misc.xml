@@ -6,6 +6,7 @@
 	<Script file="Misc\DragEmAll.lua"/>
 	<Script file="Misc\DejaMark.lua"/>
 	<Script file="Misc\ShiftRight.lua"/>
+	<Script file="Misc\SnowfallCursor.lua"/>
 	<!-- <Script file="Misc\ScrollQuestFonts.lua"/> -->
 	<Script file="Misc\SpotMe.lua"/>
 </Ui>
