@@ -10,6 +10,6 @@
 	<!--Script file="Misc\MooseLight.lua"/-->
 	
 	<!--Script file="Misc\rCompassCastbar.lua"/-->
-	<Script file="Misc\ScrollQuestFonts.lua"/>
+	<!-- <Script file="Misc\ScrollQuestFonts.lua"/> -->
 	<Script file="Misc\SpotMe.lua"/>
 </Ui>
