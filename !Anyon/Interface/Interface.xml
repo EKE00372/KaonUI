@@ -3,4 +3,5 @@
 	<Script file="Interface\ChatStyle.lua"/>
 	<Script file="Interface\ColorfulMicroMenu.lua"/>
 	<Script file="Interface\FriendList.lua"/>
+	<Script file="Interface\BagItemInfo.lua"/>
 </Ui>
