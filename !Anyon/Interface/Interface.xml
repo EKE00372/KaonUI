@@ -6,6 +6,7 @@
 	<Script file="Tooltip\TooltipSeparator.lua"/>
 	<Script file="Tooltip\TooltipInspect.lua"/>
 	<Script file="Tooltip\TooltipItemInfo.lua"/>
+	<Script file="Tooltip\Tooltip.lua"/>
 	<Script file="Interface\BagItemInfo.lua"/>
 	<Script file="Interface\CharacterStats.lua"/>
 	<Script file="Interface\ProfessionTabs.lua"/>
