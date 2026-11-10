@@ -2,4 +2,5 @@
 	<Script file="Interface\Auras.lua"/>
 	<Script file="Interface\ChatStyle.lua"/>
 	<Script file="Interface\ColorfulMicroMenu.lua"/>
+	<Script file="Interface\FriendList.lua"/>
 </Ui>
