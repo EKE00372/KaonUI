@@ -1,4 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
 	<Script file="Interface\Auras.lua"/>
 	<Script file="Interface\ChatStyle.lua"/>
+	<Script file="Interface\ColorfulMicroMenu.lua"/>
 </Ui>
