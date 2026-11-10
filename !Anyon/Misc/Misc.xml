@@ -1,4 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="Misc\AutoInvite.lua"/>
 	<!-- <Script file="Misc\ScrollQuestFonts.lua"/> -->
 	<Script file="Misc\SpotMe.lua"/>
 </Ui>
