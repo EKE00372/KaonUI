@@ -4,4 +4,5 @@
 	<Script file="Interface\ColorfulMicroMenu.lua"/>
 	<Script file="Interface\FriendList.lua"/>
 	<Script file="Interface\BagItemInfo.lua"/>
+	<Script file="Interface\CharacterStats.lua"/>
 </Ui>
