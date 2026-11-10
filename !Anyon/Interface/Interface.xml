@@ -7,4 +7,5 @@
 	<Script file="Interface\CharacterStats.lua"/>
 	<Script file="Interface\ProfessionTabs.lua"/>
 	<Script file="Interface\MacroFrame.lua"/>
+	<Script file="Interface\BetterRaid.lua"/>
 </Ui>
