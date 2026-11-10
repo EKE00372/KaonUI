@@ -4,4 +4,5 @@
 	<Script file="Combat\Nougat.lua"/>
 	<Script file="Combat\BRSound.lua"/>
 	<Script file="Combat\ThreatSound.lua"/>
+	<Script file="Combat\CombatText.lua"/>
 </Ui>
