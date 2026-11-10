@@ -1,22 +1,23 @@
-local addon, ns = ... 
-local C, F, G, L = unpack(ns)
-if not C.SpotMe then return end
+local _, ns = ...
+local F, G, L = ns[2], ns[3], ns[4]
+local M = F.RegisterModule("SpotMe", "SpotMe")
 
-local frame = CreateFrame("Frame", "SpotMe", UIParent)
+-- 模組關閉時仍保留按鍵名稱，沿用既有 SPOTME 綁定。
+BINDING_NAME_SPOTME = L.SpotMe
+
+function M:OnEnable()
+	local frame = CreateFrame("Frame", "SpotMe", UIParent)
+	frame:SetSize(100, 100)
+	frame:SetPoint("CENTER", UIParent, "CENTER", 0, -90)
+	frame:SetFrameStrata("LOW")
+	frame:Hide()
+
 	local texture = frame:CreateTexture(nil, "BACKGROUND")
 	texture:SetAllPoints()
 	texture:SetTexture(G.SpotMe)
-	texture:SetVertexColor(1,1,1,.8)
-	
-	frame:SetWidth(100)
-	frame:SetHeight(100)
-	frame:SetPoint("CENTER", UIParent, 0, -90)
-	frame:SetFrameStrata("LOW")
+	texture:SetVertexColor(1, 1, 1, .8)
 
-	frame:Hide()
-	
 	function frame:ToggleVisibility()
-		frame:SetShown(not frame:IsShown())
+		self:SetShown(not self:IsShown())
 	end
-
-BINDING_NAME_SPOTME = binding_visibility
+end
