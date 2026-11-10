@@ -1,187 +1,288 @@
-local font = STANDARD_TEXT_FONT
-local fontsize = 16
-local fontflag = "OUTLINE"
-local portStatus = true
-local minorStatus = false
+local _, ns = ...
+local F, G = ns[2], ns[3]
+local M = F.RegisterModule("Nougat", "Nougat")
 
-local C_Timer, floor, fmod, format = C_Timer, math.floor, math.fmod, string.format
-local GetHaste, GetCritChance, GetMasteryEffect = GetHaste, GetCritChance, GetMasteryEffect
-local GetDodgeChance, GetParryChance, GetBlockChance = GetDodgeChance, GetParryChance, GetBlockChance
-local UnitArmor, GetCombatRatingBonus = UnitArmor, GetCombatRatingBonus
+local floor = math.floor
+local GetTime, UnitAffectingCombat = GetTime, UnitAffectingCombat
+local GetUnitSpeed, IsSwimming, IsFlying = GetUnitSpeed, IsSwimming, IsFlying
+local AbbreviateNumbers = AbbreviateNumbers
 
-local startTime = 0
+local FONT_SIZE, UPDATE_INTERVAL = 16, .2
+local CELL_HEIGHT, CELL_BORDER, CELL_PADDING, CELL_GAP, ROW_STEP = 26, 1, 8, 2, 28
+local CELL_GLOW_SIZE = 2
+local CELL_EDGES = {
+	{"TOPLEFT", "TOPRIGHT", true},
+	{"BOTTOMLEFT", "BOTTOMRIGHT", true},
+	{"TOPLEFT", "BOTTOMLEFT", false},
+	{"TOPRIGHT", "BOTTOMRIGHT", false},
+}
+-- glow.tga 的八格切片各內縮一個材質像素；橫邊以固定 UV 旋轉，不依字寬計算重複次數。
+local CELL_GLOW_EDGES = {
+	{0, 1, 33/128, 15/16, 47/128, 15/16, 33/128, 1/16, 47/128, 1/16},
+	{0, -1, 49/128, 15/16, 63/128, 15/16, 49/128, 1/16, 63/128, 1/16},
+	{-1, 0, 1/128, 15/128, 1/16, 15/16},
+	{1, 0, 17/128, 31/128, 1/16, 15/16},
+}
+local CELL_GLOW_CORNERS = {
+	{"TOPLEFT", -1, 1, 65/128, 79/128},
+	{"TOPRIGHT", 1, 1, 81/128, 95/128},
+	{"BOTTOMLEFT", -1, -1, 97/128, 111/128},
+	{"BOTTOMRIGHT", 1, -1, 113/128, 127/128},
+}
+local speedOptions = {
+	breakpointData = {
+		{
+			breakpoint = 0,
+			abbreviation = "",
+			fractionDivisor = 1,
+			-- 比 .07 低一個浮點刻度，避免 7 / .07 被截成 99；Secret 換算交給原生。
+			significandDivisor = .06999999999999999,
+			abbreviationIsGlobal = false,
+		},
+	},
+}
 
---=============================================--
----------------    [[ APIs ]]     ---------------
---=============================================--
---[[
-local function Multicheck(check, ...)
-	for i = 1, select("#", ...) do
-		if check == select(i, ...) then
-			return true
-		end
-	end
-	return false
-end
-]]--
-local function CreateText(parent, yoffset, r, g, b)
+local frame, fadeGroup, fadeAlpha
+local armorText, speedText, timerText
+local secondaryRow, masteryRow, defenseRow, speedRow, timerRow
+local statsDirty, specializationDirty
+local showDefense
+local updateElapsed
+local combatStart, combatDuration, timerHideAt, displayedSecond
+
+local function CreateText(parent, r, g, b)
 	local text = parent:CreateFontString(nil, "OVERLAY")
-	text:SetFont(font, fontsize, fontflag)
+	text:SetFont(G.Font, FONT_SIZE, G.FontFlag)
 	text:SetShadowOffset(0, 0)
 	text:SetWordWrap(false)
 	text:SetJustifyH("RIGHT")
-	text:SetPoint("RIGHT", parent, "LEFT", 0, yoffset)
-	
-	if r then
-		text:SetTextColor(r, g, b)
-	else
-		text:SetTextColor(1, 1, 1)
-	end
-	
+	text:SetTextColor(r, g, b)
 	return text
 end
 
---=================================================--
----------------    [[ Elements ]]     ---------------
---=================================================--
-
-local Stat = CreateFrame("Frame", "NougatFrame", UIParent)
-	Stat:SetSize(100, 20)
-	Stat:SetAlpha(.4)
-	Stat:SetHitRectInsets(-5, -5, -10, -10)
-	Stat:SetFrameStrata("BACKGROUND")
-	Stat:SetPoint("CENTER", UIParent, -320, -125)
-
-	local armorText = CreateText(Stat, 0, .9, .9, .9)
-	local hasteText = CreateText(Stat, -(fontsize+2), 1, 1, 0)
-	local critText = CreateText(Stat, -(fontsize+2)*2, 1, .6, 0)
-	local mastText = CreateText(Stat, -(fontsize+2)*3, 1, 0, .8)
-	local verText = CreateText(Stat, -(fontsize+2)*4, 0, 1, 1)
-	local dodgeText = CreateText(Stat, -(fontsize+2)*5, 0, 1, 0)
-	local parryText = CreateText(Stat, -(fontsize+2)*6, 0, 1, 0)
-	local blockText = CreateText(Stat, -(fontsize+2)*7, 0, 1, 0)
-
-	local timerText = CreateText(Stat, -(fontsize+2)*8, 1, 1, 1)
-
---==================================================--
----------------    [[ Functions ]]     ---------------
---==================================================--
-
-local function getStatus()
-	local armor, haste, crit, mast, dodge, parry, block, ver, avoid, steal = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-	--[[local armor = select(2, UnitArmor("player"))
-	
-	local haste = GetHaste()
-	local crit = GetCritChance()
-	local mast = GetMasteryEffect()
-	
-	local dodge = GetDodgeChance()
-	local parry = GetParryChance()
-	local block = GetBlockChance()
-	
-	local ver = GetCombatRatingBonus(29)
-	local avoid = GetCombatRatingBonus(21)
-	local steal = GetCombatRatingBonus(17)
-	
-	local gcd = max(0.75, 1.5 * 100 / (100+haste))]]--
-	
-	armor = select(2, UnitArmor("player"))
-	
-	haste = format("%.0f", GetHaste())
-	crit = format("%.0f", GetCritChance())
-	mast = format("%.0f", GetMasteryEffect())
-	
-	if portStatus then
-		dodge = format("%.0f", GetDodgeChance())
-		parry = format("%.0f", GetParryChance())
-		block = format("%.0f", GetBlockChance())
-	end
-	
-	ver = format("%.0f", GetCombatRatingBonus(29))
-	
-	if minorStatus then
-		avoid = format("%.0f", GetCombatRatingBonus(21))
-		steal = format("%.0f", GetCombatRatingBonus(17))
-	end
-	
-	return armor, haste, crit, mast, dodge, parry, block, ver, avoid, steal
+local function CreateGlowTexture(parent, r, g, b)
+	local glow = parent:CreateTexture(nil, "BACKGROUND", nil, -1)
+	glow:SetTexture(G.GlowTex)
+	glow:SetVertexColor(r, g, b, .4)
+	return glow
 end
 
-local function updateStatus()
-	local armor, haste, crit, mast, dodge, parry, block, ver, avoid, steal = getStatus()
-	
-	armorText:SetText(armor.." Ac")
-	hasteText:SetText(haste.." Ha")
-	critText:SetText(crit.." Cr")
-	mastText:SetText(mast.." Ma")
-	verText:SetText(ver.." Ve")
-	
-	if portStatus then
-		dodgeText:SetText(dodge.."D")
-		parryText:SetText(parry.."P")
-		blockText:SetText(block.."B")
+local function CreateCell(parent, text, color)
+	local r, g, b = color[1] * 248 / 255, color[2] * 252 / 255, color[3] * 248 / 255
+	local background = parent:CreateTexture(nil, "BACKGROUND")
+	background:SetColorTexture(r, g, b, 84 / 255)
+	background:SetHeight(CELL_HEIGHT)
+	-- 自然寬完全交給文字兩端的錨點，邊框不讀回受限尺寸。
+	background:SetPoint("LEFT", text, "LEFT", -CELL_PADDING, 0)
+	background:SetPoint("RIGHT", text, "RIGHT", CELL_PADDING, 0)
+	for _, points in ipairs(CELL_EDGES) do
+		local edge = parent:CreateTexture(nil, "BORDER")
+		edge:SetColorTexture(r, g, b, .65)
+		if points[3] then edge:SetHeight(CELL_BORDER) else edge:SetWidth(CELL_BORDER) end
+		edge:SetPoint(points[1], background, points[1], 0, 0)
+		edge:SetPoint(points[2], background, points[2], 0, 0)
 	end
-	--if minorStatus then
-end
-
-local function timerDisplay(seconds)
-	local minutes = floor(seconds / 60)
-	-- floor sec because seconds for GetTime() is not a iinteger
-	seconds = floor(fmod(seconds, 60))
-	-- format as min:sec
-	timerText:SetText((minutes < 10 and "0" or "") .. minutes .. ":" .. (seconds < 10 and "0" or "") .. seconds)
-end
-
-local function OnUpdate(self, elapsed)
-	self.timer = (self.timer or .5) + elapsed
-	
-	if self.timer > .1 then
-		timerDisplay(GetTime() - startTime)
-		self.timer = 0
+	for index, points in ipairs(CELL_EDGES) do
+		local piece = CELL_GLOW_EDGES[index]
+		local glow = CreateGlowTexture(parent, r, g, b)
+		glow:SetTexCoord(unpack(piece, 3))
+		if points[3] then glow:SetHeight(CELL_GLOW_SIZE) else glow:SetWidth(CELL_GLOW_SIZE) end
+		glow:SetPoint(points[1], background, points[1], piece[1] * CELL_GLOW_SIZE, piece[2] * CELL_GLOW_SIZE)
+		glow:SetPoint(points[2], background, points[2], piece[1] * CELL_GLOW_SIZE, piece[2] * CELL_GLOW_SIZE)
+	end
+	for _, piece in ipairs(CELL_GLOW_CORNERS) do
+		local glow = CreateGlowTexture(parent, r, g, b)
+		glow:SetTexCoord(piece[4], piece[5], 1/16, 15/16)
+		glow:SetSize(CELL_GLOW_SIZE, CELL_GLOW_SIZE)
+		glow:SetPoint(piece[1], background, piece[1], piece[2] * CELL_GLOW_SIZE, piece[3] * CELL_GLOW_SIZE)
 	end
 end
 
-local function timerStart(self)
-	-- get system time
-	startTime = GetTime()
-	-- show timer
-	timerText:Show()
-	-- should reset timer when start, avoid reset issue happened if gain combat again less then 3 sec
-	timerText:SetText("00:00")
-	-- update timer
+local function CreateRow(index, colors)
+	local row = CreateFrame("Frame", nil, frame, "DisableUntrustedLayoutScriptsTemplate")
+	row:SetSize(1, CELL_HEIGHT)
+	row:SetPoint("RIGHT", frame, "LEFT", 0, -ROW_STEP * index)
+	row.texts = {}
+	local anchor, point, gap = row, "RIGHT", CELL_PADDING
+	for i = #colors, 1, -1 do
+		local color = colors[i]
+		local text = CreateText(row, color[1], color[2], color[3])
+		text:SetPoint("RIGHT", anchor, point, -gap, 0)
+		CreateCell(row, text, color)
+		row.texts[i] = text
+		anchor, point, gap = text, "LEFT", CELL_PADDING * 2 + CELL_GAP
+	end
+	return row
+end
+
+local function UpdateStats()
+	statsDirty = false
+	if specializationDirty then
+		specializationDirty = false
+		local spec = C_SpecializationInfo.GetSpecialization()
+		local isTank = false
+		if spec then
+			isTank = (select(5, C_SpecializationInfo.GetSpecializationInfo(spec)) == "TANK")
+		end
+		if isTank ~= showDefense then
+			showDefense = isTank
+			defenseRow:SetShown(isTank)
+			local speedIndex = isTank and 4 or 3
+			speedRow:SetPoint("RIGHT", frame, "LEFT", 0, -ROW_STEP * speedIndex)
+			timerRow:SetPoint("RIGHT", frame, "LEFT", 0, -ROW_STEP * (speedIndex + 1))
+		end
+	end
+	local _, armor = UnitArmor("player")
+	-- 屬性可能是 Secret；只格式化顯示，不拿數值或呈現文字作比較與計算。
+	armorText:SetFormattedText("%d Ac", armor)
+	secondaryRow.texts[1]:SetFormattedText("%.0f", GetHaste())
+	secondaryRow.texts[2]:SetFormattedText("%.0f", GetCritChance())
+	masteryRow.texts[1]:SetFormattedText("%.0f", (GetMasteryEffect()))
+	-- 全能沿用舊版的等級換算部分，不合計額外百分比。
+	masteryRow.texts[2]:SetFormattedText("%.0f", GetCombatRatingBonus(CR_VERSATILITY_DAMAGE_DONE))
+	if showDefense then
+		defenseRow.texts[1]:SetFormattedText("%.0f", GetDodgeChance())
+		defenseRow.texts[2]:SetFormattedText("%.0f", GetParryChance())
+		defenseRow.texts[3]:SetFormattedText("%.0f", GetBlockChance())
+	end
+end
+
+local function UpdateSpeed()
+	local _, runSpeed, flightSpeed, swimSpeed = GetUnitSpeed("player")
+	local speed
+	if IsSwimming("player") then
+		speed = swimSpeed
+	elseif IsFlying("player") then
+		speed = flightSpeed
+	else
+		speed = runSpeed
+	end
+	speedText:SetFormattedText("%s%%", AbbreviateNumbers(speed, speedOptions))
+end
+
+local function UpdateTimer(now)
+	if timerHideAt and now >= timerHideAt then
+		timerHideAt = nil
+		timerRow:Hide()
+		return
+	end
+	if not combatStart and not timerHideAt then return end
+
+	local seconds = floor(combatStart and now - combatStart or combatDuration)
+	if seconds ~= displayedSecond then
+		displayedSecond = seconds
+		timerText:SetFormattedText("%02d:%02d", floor(seconds / 60), seconds % 60)
+	end
+end
+
+local function UpdateCombatState(inCombat, instant)
+	local now = GetTime()
+	if inCombat then
+		if not combatStart then
+			combatStart = now
+			timerHideAt = nil
+			displayedSecond = nil
+		end
+	elseif combatStart then
+		combatDuration = now - combatStart
+		combatStart = nil
+		timerHideAt = now + 3
+	end
+	if not frame:IsVisible() then return end
+
+	timerRow:SetShown(combatStart ~= nil or timerHideAt ~= nil)
+	UpdateTimer(now)
+
+	-- 只讀寫自有框體的公開 Alpha；動畫由原生執行，不使用共用 FADEFRAMES。
+	local alpha = frame:GetAlpha()
+	fadeGroup:Stop()
+	local target = inCombat and 1 or .4
+	if instant then
+		frame:SetAlpha(target)
+	else
+		frame:SetAlpha(alpha)
+		fadeAlpha:SetFromAlpha(alpha)
+		fadeAlpha:SetToAlpha(target)
+		fadeAlpha:SetDuration(inCombat and .4 or .8)
+		fadeGroup:Play()
+	end
+end
+
+local function OnUpdate(_, elapsed)
+	-- 同一幀的屬性事件只查一次；定時更新不重查整組屬性。
+	if statsDirty then UpdateStats() end
+	updateElapsed = updateElapsed + elapsed
+	if updateElapsed < UPDATE_INTERVAL then return end
+	updateElapsed = updateElapsed % UPDATE_INTERVAL
+
+	UpdateSpeed()
+	UpdateTimer(GetTime())
+end
+
+local function OnShow(self)
+	updateElapsed = 0
+	UpdateCombatState(UnitAffectingCombat("player"), true)
+	specializationDirty = true
+	UpdateStats()
+	UpdateSpeed()
 	self:SetScript("OnUpdate", OnUpdate)
 end
 
-local function timerEnd(self)
-	-- stop update
+local function OnHide(self)
 	self:SetScript("OnUpdate", nil)
-	-- fade out after 3 sec
-	C_Timer.After(3, function() if not UnitAffectingCombat("player") then timerText:Hide() end end)
+	fadeGroup:Stop()
 end
 
---================================================--
----------------    [[ Updates ]]     ---------------
---================================================--
-
-local function OnEvent(self, event, ...)
+local function OnEvent(_, event)
 	if event == "PLAYER_REGEN_DISABLED" then
-		securecall(UIFrameFadeIn, Stat, .4, 0, 1)
-		timerStart(self)
+		UpdateCombatState(true)
 	elseif event == "PLAYER_REGEN_ENABLED" then
-		securecall(UIFrameFadeOut, Stat, .8, 1, .4)
-		timerEnd(self)
+		UpdateCombatState(false)
+	elseif event == "PLAYER_ENTERING_WORLD" then
+		UpdateCombatState(UnitAffectingCombat("player"), true)
+		specializationDirty = true
+		statsDirty = true
 	else
-		updateStatus()
+		if event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED" then specializationDirty = true end
+		-- 原生先過濾 player；不接收或解讀 UNIT_AURA 的受限 payload。
+		statsDirty = true
 	end
 end
 
---================================================--
----------------    [[ Scripts ]]     ---------------
---================================================--
+function M:OnEnable()
+	frame = CreateFrame("Frame", "NougatFrame", UIParent)
+	frame:Hide()
+	frame:SetSize(100, 20)
+	frame:SetAlpha(.4)
+	frame:SetFrameStrata("BACKGROUND")
+	frame:SetPoint("CENTER", UIParent, "CENTER", -320, -128)
 
-	Stat:RegisterEvent("PLAYER_ENTERING_WORLD")
-	Stat:RegisterEvent("COMBAT_RATING_UPDATE")
-	Stat:RegisterEvent("PLAYER_REGEN_DISABLED")
-	Stat:RegisterEvent("PLAYER_REGEN_ENABLED")
-	Stat:RegisterUnitEvent("UNIT_RESISTANCES", "player")
-	Stat:SetScript("OnEvent", OnEvent)
+	local armorRow = CreateRow(0, {{.9, .9, .9}})
+	secondaryRow = CreateRow(1, {{1, 1, 0}, {1, .6, 0}})
+	masteryRow = CreateRow(2, {{.7, .3, 1}, {.35, .7, 1}})
+	defenseRow = CreateRow(3, {{.25, .9, .65}, {1, .45, .45}, {1, .82, .4}})
+	speedRow = CreateRow(4, {{.8, .8, 1}})
+	timerRow = CreateRow(5, {{1, 1, 1}})
+	armorText, speedText, timerText = armorRow.texts[1], speedRow.texts[1], timerRow.texts[1]
+	timerRow:Hide()
+
+	fadeGroup = frame:CreateAnimationGroup()
+	fadeGroup:SetToFinalAlpha(true)
+	fadeAlpha = fadeGroup:CreateAnimation("Alpha")
+
+	for _, event in ipairs({
+		"PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+		"COMBAT_RATING_UPDATE", "MASTERY_UPDATE", "PLAYER_EQUIPMENT_CHANGED",
+		"PLAYER_TALENT_UPDATE", "ACTIVE_PLAYER_SPECIALIZATION_CHANGED",
+	}) do
+		frame:RegisterEvent(event)
+	end
+	for _, event in ipairs({ "UNIT_AURA", "UNIT_STATS", "UNIT_SPELL_HASTE", "UNIT_RESISTANCES" }) do
+		frame:RegisterUnitEvent(event, "player")
+	end
+	frame:SetScript("OnEvent", OnEvent)
+	frame:SetScript("OnShow", OnShow)
+	frame:SetScript("OnHide", OnHide)
+	UpdateCombatState(UnitAffectingCombat("player"), true)
+	frame:Show()
+end
