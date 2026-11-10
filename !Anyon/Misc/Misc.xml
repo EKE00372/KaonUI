@@ -2,6 +2,7 @@
 	<Script file="Misc\AutoInvite.lua"/>
 	<Script file="Misc\AutoLog.lua"/>
 	<Script file="Misc\AutoShot.lua"/>
+	<Script file="Misc\MooseLight.lua"/>
 	<Script file="Misc\DragEmAll.lua"/>
 	<Script file="Misc\DejaMark.lua"/>
 	<!-- <Script file="Misc\ScrollQuestFonts.lua"/> -->
