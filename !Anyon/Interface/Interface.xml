@@ -5,4 +5,5 @@
 	<Script file="Interface\FriendList.lua"/>
 	<Script file="Interface\BagItemInfo.lua"/>
 	<Script file="Interface\CharacterStats.lua"/>
+	<Script file="Interface\ProfessionTabs.lua"/>
 </Ui>
