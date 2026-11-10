@@ -7,6 +7,8 @@
 
 Init.lua
 Config.lua
+Locale.lua
+GUI.lua
 
 UIScale.lua
 
