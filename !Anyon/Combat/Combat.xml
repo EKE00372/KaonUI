@@ -1,5 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
-	<Script file="Combat\CombatAlert.lua"/>
+	<!-- <Script file="Combat\CombatAlert.lua"/> -->
 	<Script file="Combat\CombatAlertSound.lua"/>
 	<Script file="Combat\Nougat.lua"/>
 	<Script file="Combat\SpellAnnouncer.lua"/>
