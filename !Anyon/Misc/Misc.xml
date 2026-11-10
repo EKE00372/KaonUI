@@ -4,7 +4,6 @@
 	<Script file="Misc\AutoShot.lua"/>
 	<Script file="Misc\AutoTalkinghead.lua"/>
 	
-	<Script file="Misc\FriendlyCVAR.lua"/>
 	
 	<!--Script file="Misc\DragEmAll.lua"/-->
 	<Script file="Misc\SnowfallCursor.lua"/>
